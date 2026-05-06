@@ -12,3 +12,6 @@ __pycache__/
 
 # Rust cargo build artifacts.
 /jarvis-cal/target/
+
+# Claude Code workspace (prompts, plans, audits, memory) — never committed.
+/.claude/
