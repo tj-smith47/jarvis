@@ -1,5 +1,7 @@
 # Build artifacts from `task build` — native helper binaries land here.
-/bin/
+/bin/jarvis-state
+/bin/jarvis-cal
+/bin/jarvis-when
 
 # go-task checksum cache for build:* idempotency.
 /.task/
