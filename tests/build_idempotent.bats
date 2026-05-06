@@ -27,9 +27,11 @@ setup() {
 
 teardown() {
   jarvis_common_teardown
-  rm -f "$JARVIS_DIR/bin/jarvis-state" \
-        "$JARVIS_DIR/bin/jarvis-cal" \
-        "$JARVIS_DIR/bin/jarvis-when"
+  # Purge Task's checksum cache so each test gets a clean dirty/clean
+  # decision, but leave bin/ alone — downstream test files (doctor.bats's
+  # --reap-focus-orphans path, status.bats, etc.) source lib/native/clock.sh
+  # which execs bin/jarvis-when. Deleting it here would strand them.
+  # Each @test rebuilds via _run_build so the freshness invariant is local.
   rm -rf "$JARVIS_DIR/.task"
 }
 
@@ -53,6 +55,15 @@ _mtime_ns() {
 }
 
 @test "cold build: all three stub binaries are produced" {
+  # Hermetic cold-build assertion: nuke binaries + Task checksum cache
+  # for THIS test only. The file-level teardown deliberately leaves bin/
+  # populated so downstream test files (doctor.bats reap, status.bats, …)
+  # find a working bin/jarvis-when.
+  rm -f "$JARVIS_DIR/bin/jarvis-state" \
+        "$JARVIS_DIR/bin/jarvis-cal" \
+        "$JARVIS_DIR/bin/jarvis-when"
+  rm -rf "$JARVIS_DIR/.task"
+
   _run_build
   [ "$status" -eq 0 ] || { echo "build failed: $output"; return 1; }
   [ -x "$JARVIS_DIR/bin/jarvis-state" ]
@@ -104,4 +115,18 @@ _mtime_ns() {
   # cal and when must NOT have been rebuilt.
   [ "$(_mtime_ns "$JARVIS_DIR/bin/jarvis-cal")"  = "$mt_cal"  ]
   [ "$(_mtime_ns "$JARVIS_DIR/bin/jarvis-when")" = "$mt_when" ]
+}
+
+# Regression guard: this file's teardown MUST leave bin/ populated, otherwise
+# downstream test files (doctor.bats's --reap-focus-orphans path,
+# status.bats, standup.bats, ...) source lib/native/clock.sh, which execs
+# bin/jarvis-when and silently misbehaves when the binary is missing —
+# the doctor reap loop falls through `|| continue` and reports "reaped 0".
+# Run last so it observes the outcome of every preceding teardown in this
+# file. If a future change reintroduces blanket `rm -f bin/...` in
+# teardown(), this assertion fires before the leak strands later suites.
+@test "teardown does not strand bin/ for downstream test files" {
+  [ -x "$JARVIS_DIR/bin/jarvis-state" ]
+  [ -x "$JARVIS_DIR/bin/jarvis-cal" ]
+  [ -x "$JARVIS_DIR/bin/jarvis-when" ]
 }

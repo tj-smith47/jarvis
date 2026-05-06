@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Resolve framework/CLI dirs with fallback so this script runs standalone in tests.
-: "${FRAMEWORK_DIR:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)}"
-: "${CLI_DIR:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+: "${FRAMEWORK_DIR:=${CLIFT_FRAMEWORK_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)}}"
+: "${CLI_DIR:=${JARVIS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}}"
 
 # shellcheck source=/dev/null
 source "${FRAMEWORK_DIR}/lib/log/log.sh"
