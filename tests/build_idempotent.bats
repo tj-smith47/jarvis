@@ -122,9 +122,9 @@ _mtime_ns() {
 # status.bats, standup.bats, ...) source lib/native/clock.sh, which execs
 # bin/jarvis-when and silently misbehaves when the binary is missing —
 # the doctor reap loop falls through `|| continue` and reports "reaped 0".
-# Run last so it observes the outcome of every preceding teardown in this
-# file. If a future change reintroduces blanket `rm -f bin/...` in
-# teardown(), this assertion fires before the leak strands later suites.
+# Asserts bin/ is populated entering this test. If a preceding test's
+# teardown deletes the binaries (the bug this commit fixes), this
+# assertion fires before the leak strands later suites.
 @test "teardown does not strand bin/ for downstream test files" {
   [ -x "$JARVIS_DIR/bin/jarvis-state" ]
   [ -x "$JARVIS_DIR/bin/jarvis-cal" ]
