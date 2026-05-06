@@ -1,0 +1,12 @@
+{"ts":"2026-04-26T10:00:00Z","event":"start","duration":"25m","topic":"focus"}
+{"ts":"2026-04-26T10:25:00Z","event":"end","topic":"focus"}
+{"ts":"2026-04-27T10:00:00Z","event":"start","duration":"25m","topic":"focus"}
+{"ts":"2026-04-27T10:25:00Z","event":"end","topic":"focus"}
+{"ts":"2026-04-28T10:00:00Z","event":"start","duration":"25m","topic":"focus"}
+{"ts":"2026-04-28T10:25:00Z","event":"end","topic":"focus"}
+{"ts":"2026-04-29T10:00:00Z","event":"start","duration":"25m","topic":"focus"}
+{"ts":"2026-04-29T10:25:00Z","event":"end","topic":"focus"}
+{"ts":"2026-04-30T10:00:00Z","event":"start","duration":"30m","topic":"focus"}
+{"ts":"2026-04-30T10:30:00Z","event":"end","topic":"focus"}
+{"ts":"2026-05-01T10:00:00Z","event":"start","duration":"75m","topic":"focus"}
+{"ts":"2026-05-01T11:15:00Z","event":"end","topic":"focus"}

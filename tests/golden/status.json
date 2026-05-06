@@ -1,0 +1,8 @@
+{
+  "profile": "test",
+  "ts": "2026-05-01T15:00:00Z",
+  "tasks": {"open": 2, "done_today": 1},
+  "focus": {"streak_days": 6, "minutes_today": 75},
+  "reminders": {"scheduled": 2, "next_in_minutes": 42, "next_message": "stand up"},
+  "jira": {"in_flight": 0}
+}
