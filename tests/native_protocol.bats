@@ -5,7 +5,6 @@ load helper
 
 JARVIS_DIR_REAL="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 PROTOCOL_LIB="${JARVIS_DIR_REAL}/lib/native/protocol.sh"
-LOG_LIB="${CLIFT_FRAMEWORK_DIR:-$HOME/.clift}/lib/log/log.sh"
 
 setup() {
   jarvis_common_setup

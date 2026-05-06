@@ -12,8 +12,9 @@ jarvis_common_setup() {
   # Resolve framework dir BEFORE redirecting HOME so $HOME expansion is real.
   export CLIFT_FRAMEWORK_DIR="${CLIFT_FRAMEWORK_DIR:-$HOME/.clift}"
   if [[ ! -d "$CLIFT_FRAMEWORK_DIR" ]]; then
-    printf 'jarvis tests require clift framework at $CLIFT_FRAMEWORK_DIR (got %q)\n' "$CLIFT_FRAMEWORK_DIR" >&2
-    printf 'install: git clone https://github.com/tj-smith47/clift %s\n' "$CLIFT_FRAMEWORK_DIR" >&2
+    printf 'jarvis tests require clift framework — set CLIFT_FRAMEWORK_DIR or install at $HOME/.clift\n' >&2
+    printf '  current value: %q\n' "$CLIFT_FRAMEWORK_DIR" >&2
+    printf '  install hint:  git clone https://github.com/tj-smith47/clift "$HOME/.clift"\n' >&2
     exit 1
   fi
   TEST_DIR="$(mktemp -d)"
