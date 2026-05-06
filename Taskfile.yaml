@@ -1,0 +1,96 @@
+version: '3'
+
+silent: true
+output:
+  group:
+    begin: ''
+    end: ''
+set: [errexit, pipefail]
+dotenv: ['.env']
+
+vars:
+  FLAGS:
+    - {name: help, short: h, type: bool, desc: "Show help"}
+    - {name: verbose, short: v, type: bool, desc: "Verbose output"}
+    - {name: quiet, short: q, type: bool, desc: "Suppress info/success output"}
+    - {name: no-color, type: bool, desc: "Disable color output"}
+    - {name: version, short: V, type: bool, desc: "Show version"}
+  # Persistent flags — accepted either before or after the command token.
+  PERSISTENT_FLAGS:
+    - {name: profile, short: p, type: string, default: work, desc: "Profile: work or home",
+       choices: [work, home]}
+
+includes:
+  _help:
+    taskfile: '{{.FRAMEWORK_DIR}}/lib/help'
+  _new:
+    taskfile: '{{.FRAMEWORK_DIR}}/lib/scaffold'
+    vars: {CLI_DIR: '{{.CLI_DIR}}', FRAMEWORK_DIR: '{{.FRAMEWORK_DIR}}'}
+  config:
+    taskfile: '{{.FRAMEWORK_DIR}}/lib/config'
+    vars: {CLI_DIR: '{{.CLI_DIR}}', FRAMEWORK_DIR: '{{.FRAMEWORK_DIR}}'}
+  completion:
+    taskfile: '{{.FRAMEWORK_DIR}}/lib/completion'
+    vars: {TASKFILE_PATH: '{{.CLI_DIR}}/Taskfile.yaml', CLI_NAME: '{{.CLI_NAME}}'}
+  update:
+    taskfile: '{{.FRAMEWORK_DIR}}/lib/update'
+    vars: {FRAMEWORK_DIR: '{{.FRAMEWORK_DIR}}'}
+  # User commands
+  brief:
+    taskfile: ./cmds/brief
+  focus:
+    taskfile: ./cmds/focus
+  task:
+    taskfile: ./cmds/task
+  note:
+    taskfile: ./cmds/note
+  remind:
+    taskfile: ./cmds/remind
+  standup:
+    taskfile: ./cmds/standup
+  coffee:
+    taskfile: ./cmds/coffee
+  status:
+    taskfile: ./cmds/status
+  doctor:
+    taskfile: ./cmds/doctor
+tasks:
+  default:
+    cmd:
+      task: _help:list
+
+  build:
+    desc: "Build all native helpers (idempotent — checksums skip unchanged)"
+    run: once
+    deps: [build:state, build:cal, build:when]
+
+  build:state:
+    desc: "Build jarvis-state Go binary"
+    sources:
+      - jarvis-state/**/*.go
+      - jarvis-state/go.mod
+      - jarvis-state/go.sum
+    generates:
+      - bin/jarvis-state
+    method: checksum
+    cmd: ./scripts/build_state.sh
+
+  build:cal:
+    desc: "Build jarvis-cal Rust binary"
+    sources:
+      - jarvis-cal/src/**/*.rs
+      - jarvis-cal/Cargo.toml
+      - jarvis-cal/Cargo.lock
+    generates:
+      - bin/jarvis-cal
+    method: checksum
+    cmd: ./scripts/build_cal.sh
+
+  build:when:
+    desc: "Build jarvis-when (single-file pure-stdlib Python)"
+    sources:
+      - jarvis-when/src/jarvis_when.py
+    generates:
+      - bin/jarvis-when
+    method: checksum
+    cmd: ./scripts/build_when.sh

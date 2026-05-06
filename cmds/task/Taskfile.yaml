@@ -1,0 +1,83 @@
+version: '3'
+
+vars:
+  FLAGS: []
+
+tasks:
+  add:
+    desc: "Add a new task"
+    aliases: [new]
+    summary: |
+      Capture a quick task. Accepts a positional description.
+
+      Examples:
+        jarvis task add "ship vhs demos" --priority high
+        jarvis task new "review auth PR" --due tomorrow
+    vars:
+      FLAGS:
+        - {name: priority, short: P, type: string, default: med, desc: "Priority",
+           choices: [low, med, high], aliases: [pri]}
+        - {name: urgency, type: string, desc: "(deprecated) use --priority",
+           deprecated: "use --priority instead"}
+        - {name: due, type: string, desc: "Due date (e.g. today, tomorrow, YYYY-MM-DD)"}
+        - {name: project, type: string, desc: "Project bucket (omitted → inbox)"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  list:
+    desc: "List tasks"
+    aliases: [ls]
+    summary: |
+      Show open tasks by default; --all includes done.
+    vars:
+      FLAGS:
+        - {name: all, short: a, type: bool, desc: "Include done tasks"}
+        - {name: priority, short: P, type: string, desc: "Filter by priority",
+           choices: [low, med, high]}
+        - {name: project, type: string, desc: "Filter by project"}
+        - {name: due, type: string, desc: "Filter by due (today|tomorrow|YYYY-MM-DD)"}
+        - {name: jira, type: bool, desc: "Merge Jira-assigned issues (To Do + In Progress)"}
+        - {name: json, type: bool, desc: "Emit JSON array",
+           group: output, exclusive: true}
+        - {name: yaml, type: bool, desc: "Emit YAML array",
+           group: output, exclusive: true}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  done:
+    desc: "Mark a task done"
+    aliases: [complete]
+    summary: |
+      Mark a task done by id (positional).
+
+      Examples:
+        jarvis task done 3
+        jarvis task complete 7
+    vars:
+      FLAGS: []
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  remove:
+    desc: "Remove a task (hard-delete)"
+    aliases: [rm]
+    summary: |
+      Hard-delete a task file by slug (or unique prefix).
+
+      Examples:
+        jarvis task remove fix-k3s
+        jarvis task rm fix-k3s-etcd
+    vars:
+      FLAGS: []
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  edit:
+    desc: "Edit a task's fields in place"
+    summary: |
+      Update fields on an existing task (slug or unique prefix).
+      At least one of --desc/--priority/--due/--project is required.
+    vars:
+      FLAGS:
+        - {name: desc, type: string, desc: "New description"}
+        - {name: priority, short: P, type: string, desc: "New priority",
+           choices: [low, med, high]}
+        - {name: due, type: string, desc: "New due (today|tomorrow|YYYY-MM-DD|clear)"}
+        - {name: project, type: string, desc: "New project (inbox|<name>)"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

@@ -1,0 +1,30 @@
+version: '3'
+
+vars:
+  FLAGS:
+    - {name: size, short: s, type: string, default: medium, desc: "Cup size",
+       choices: [small, medium, large]}
+    - {name: milk, type: bool, desc: "With milk"}
+    - {name: no-log, type: bool, desc: "Don't write a coffee row to focus.log"}
+
+tasks:
+  default:
+    desc: "Brew a coffee ☕"
+    summary: |
+      The most important command in the CLI. Takes a few seconds
+      — please be patient, good coffee cannot be rushed.
+
+      Each brew appends a `coffee` row to focus.log so today's session
+      count reflects it; --no-log skips that.
+
+      Examples:
+        jarvis coffee
+        jarvis coffee --size large --milk
+        jarvis coffee --no-log
+    vars:
+      FLAGS:
+        - {name: size, short: s, type: string, default: medium, desc: "Cup size",
+           choices: [small, medium, large]}
+        - {name: milk, type: bool, desc: "With milk"}
+        - {name: no-log, type: bool, desc: "Don't write a coffee row to focus.log"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

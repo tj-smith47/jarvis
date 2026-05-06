@@ -1,0 +1,221 @@
+version: '3'
+
+tasks:
+  default:
+    desc: "Capture a note (create or append depending on current note + --on)"
+    aliases: [n]
+    summary: |
+      Capture a note. With no current note set and no --on, creates a quick
+      capture in inbox/. With a current note set, appends there. --on overrides
+      for a single call without mutating current.
+
+      Examples:
+        jarvis note "deployed the shim"
+        jarvis note "quick thought" --tag idea --tag infra
+        jarvis note "unrelated" --on "Perf Investigation"
+    vars:
+      FLAGS:
+        - {name: tag, type: list, desc: "Tag (repeatable)"}
+        - {name: on, type: string, desc: "Append to this note for one call (title or slug)"}
+        - {name: no-timestamp, type: bool, desc: "Skip the timestamp header on append"}
+        - {name: format, type: string, desc: "Strftime format for append header"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  new:
+    desc: "Create a new note with a title and optional kind"
+    aliases: [create]
+    summary: |
+      Create a new note. Opens $EDITOR when available; --no-edit skips.
+
+      Examples:
+        jarvis note new "Etcd Restore Runbook" --kind ref
+        jarvis note new "1on1 Alice" --kind meeting --tag alice
+        jarvis note new "Quick capture" --no-edit
+    vars:
+      FLAGS:
+        - {name: kind, type: string, default: inbox, desc: "Note kind",
+           choices: [inbox, meeting, ref, project, daily]}
+        - {name: tag, type: list, desc: "Tag (repeatable)"}
+        - {name: no-edit, type: bool, desc: "Skip opening $EDITOR"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  daily:
+    desc: "Today's daily note (create or append)"
+    summary: |
+      Resolves to daily/YYYY-MM-DD.md for today. Creates from
+      templates/daily.md when missing. Body argument appends; no body
+      opens $EDITOR (unless --no-edit / non-tty).
+
+      Examples:
+        jarvis note daily                           # open in $EDITOR (or no-op with --no-edit)
+        jarvis note daily "finished the rewrite"    # append
+        jarvis note daily --no-edit                 # ensure today's file exists, no editor
+    vars:
+      FLAGS:
+        - {name: no-edit, type: bool, desc: "Skip opening $EDITOR"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  meeting:
+    desc: "Create a meeting note (auto-dated slug)"
+    summary: |
+      Creates meeting/<slug-of-title>-YYYY-MM-DD.md from templates/meeting.md.
+      A title prefixed with "1on1 " (case-insensitive) prefers templates/1on1.md.
+
+      Examples:
+        jarvis note meeting "Design Review"
+        jarvis note meeting "1on1 Alice"
+    vars:
+      FLAGS:
+        - {name: no-edit, type: bool, desc: "Skip opening $EDITOR"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  project:
+    desc: "Create a project note under project/<proj>/<slug>.md"
+    summary: |
+      Usage: jarvis note project <proj>/<title>
+
+      Both <proj> and <title> are slugified; templates/project.md is
+      applied if present.
+
+      Example:
+        jarvis note project clift/perf-investigation
+    vars:
+      FLAGS:
+        - {name: no-edit, type: bool, desc: "Skip opening $EDITOR"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  current:
+    desc: "Show / set / clear the current note"
+    summary: |
+      Sets a default target for `jarvis note <body>` quick-capture so
+      subsequent appends route to the current note instead of inbox.
+      Reserved keyword 'daily' stores kind=daily and auto-rotates per
+      day. No-arg shows the current resolved selection.
+
+      Examples:
+        jarvis note current "Perf Investigation"
+        jarvis note current daily
+        jarvis note current
+        jarvis note current --clear
+    vars:
+      FLAGS:
+        - {name: clear, type: bool, desc: "Unset the current note"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  archive:
+    desc: "Archive a note (move to archive/<slug>.md)"
+    summary: |
+      Hard-moves the note to archive/<slug>.md, stamps frontmatter
+      (kind=archive, archived=true, original_kind=<old>) and updates the
+      index. Collision suffix -2, -3, ... when the slug already exists in
+      archive/.
+
+      Examples:
+        jarvis note archive etcd-runbook
+        jarvis note archive inbox/audit
+    vars:
+      FLAGS: []
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  tag:
+    desc: "Mutate frontmatter tags: +add / -remove (set semantics)"
+    summary: |
+      Usage: jarvis note tag <slug> [+tag]... [-tag]...
+
+      All ops are validated up front; combined +/- in one call is fine.
+      Unknown tag names removed are silently no-ops; idempotent across
+      repeat invocations.
+
+      Examples:
+        jarvis note tag etcd-runbook +k3s +infra
+        jarvis note tag inbox/audit +clift -draft
+    vars:
+      FLAGS: []
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  link:
+    desc: "Bi-directionally link two notes"
+    summary: |
+      Usage: jarvis note link <a> <b>
+
+      Appends [[<key-of-b>]] to a's body, [[<key-of-a>]] to b's body.
+      Idempotent; refuses to link a note to itself.
+
+      Examples:
+        jarvis note link etcd-runbook restore-runbook
+    vars:
+      FLAGS: []
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  search:
+    desc: "Full-text search across notes (rg)"
+    summary: |
+      Smart-case literal by default; --regex switches to regex. --kind /
+      --tag post-filter results against .index.json.
+
+      Examples:
+        jarvis note search flock
+        jarvis note search '^todo' --regex
+        jarvis note search migration --kind project --tag k3s
+    vars:
+      FLAGS:
+        - {name: regex, type: bool, desc: "Treat query as regex (still smart-case)"}
+        - {name: kind, type: string, desc: "Filter results by kind",
+           choices: [inbox, meeting, ref, project, daily, archive]}
+        - {name: tag, type: list, desc: "Filter results by tag (repeatable; OR)"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  show:
+    desc: "Render a note (glow > bat > cat fallback)"
+    summary: |
+      Resolves slug/title/prefix; no-arg → current note. --raw skips the
+      renderer and dumps the file unchanged.
+
+      Examples:
+        jarvis note show etcd-runbook
+        jarvis note show "Perf Investigation"
+        jarvis note show inbox/audit --raw
+    vars:
+      FLAGS:
+        - {name: raw, type: bool, desc: "Skip glow/bat; cat the file"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  edit:
+    desc: "Open a note in $EDITOR"
+    summary: |
+      Resolves slug/title/prefix; no-arg → current note. Re-indexes the
+      note after the editor exits so frontmatter changes land in
+      .index.json immediately.
+
+      Examples:
+        jarvis note edit etcd-runbook
+        jarvis note edit                 # opens current
+    vars:
+      FLAGS: []
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  list:
+    desc: "List notes grouped by kind"
+    summary: |
+      Reads the note index, applies filters, groups by kind. Default limit
+      is 50 rows; override with --limit. --json / --yaml emit a flat array
+      instead of the grouped table (mutually exclusive).
+
+      Examples:
+        jarvis note list
+        jarvis note list --tag k3s --tag perf
+        jarvis note list --kind ref --json
+        jarvis note list --since 2026-04-01 --archived
+    vars:
+      FLAGS:
+        - {name: kind, type: string, desc: "Filter by kind",
+           choices: [inbox, meeting, ref, project, daily, archive]}
+        - {name: tag, type: list, desc: "Filter by tag (repeatable; OR semantics)"}
+        - {name: since, type: string, desc: "Filter updated_at >= ISO timestamp"}
+        - {name: archived, type: bool, desc: "Include archived notes"}
+        - {name: limit, type: string, default: "50", desc: "Max rows"}
+        - {name: json, type: bool, desc: "Emit JSON array",
+           group: output, exclusive: true}
+        - {name: yaml, type: bool, desc: "Emit YAML array",
+           group: output, exclusive: true}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

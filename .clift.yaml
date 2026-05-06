@@ -1,0 +1,9 @@
+name: jarvis
+version: 1.0.0
+description: A personal ops concierge CLI — morning briefings, focus timers, task capture, and a properly brewed coffee.
+
+dependencies:
+  required:
+    - jq
+  optional:
+    - gum

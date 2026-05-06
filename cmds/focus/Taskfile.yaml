@@ -1,0 +1,49 @@
+version: '3'
+
+vars:
+  FLAGS:
+    - {name: on, type: string, desc: "What you're focusing on (shown in title)"}
+    - {name: silent, type: bool, desc: "No end-of-session chime"}
+
+tasks:
+  default:
+    desc: "Start a focus session ⏱"
+    aliases: [pomodoro]
+    summary: |
+      Start a timed focus session. Duration is the first positional
+      argument, e.g. `25m`, `10s`, `1h`. Shows a countdown spinner. Each
+      session writes a `start` row to focus.log; the EXIT trap writes the
+      matching `end` row even on Ctrl+C, so `focus stats` stays honest.
+
+      Examples:
+        jarvis focus 25m --on "write tests"
+        jarvis focus 10s --on demo
+        jarvis pomodoro 25m
+    vars:
+      FLAGS:
+        - {name: on, type: string, desc: "What you're focusing on (shown in title)"}
+        - {name: silent, type: bool, desc: "No end-of-session chime"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  stats:
+    desc: "Today's focus minutes + top topics"
+    summary: |
+      Reads focus.log and reports today's totals + top topics over the
+      last N days. Default window is 7 days; --days N overrides. --limit N
+      caps the number of topic rows.
+
+      Examples:
+        jarvis focus stats
+        jarvis focus stats --days 30 --limit 10
+        jarvis focus stats --json
+    vars:
+      FLAGS:
+        - {name: json, type: bool, desc: "Emit JSON",
+           group: output, exclusive: true}
+        - {name: yaml, type: bool, desc: "Emit YAML",
+           group: output, exclusive: true}
+        - {name: days, type: string, default: "7",
+           desc: "Top-topics lookback window (days)"}
+        - {name: limit, type: string, default: "5",
+           desc: "Max top-topic rows"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

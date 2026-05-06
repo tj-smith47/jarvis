@@ -1,0 +1,12 @@
+# Build artifacts from `task build` — native helper binaries land here.
+/bin/
+
+# go-task checksum cache for build:* idempotency.
+/.task/
+
+# Python bytecode caches (jarvis-when is a single-file script; runs uncached).
+__pycache__/
+*.pyc
+
+# Rust cargo build artifacts.
+/jarvis-cal/target/

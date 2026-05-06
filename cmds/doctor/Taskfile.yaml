@@ -1,0 +1,18 @@
+version: '3'
+
+vars:
+  FLAGS:
+    - {name: migrate, type: bool, desc: "Run pending state-file migrations"}
+    - {name: path, type: bool, desc: "Print resolved state dir and exit"}
+    - {name: rebuild-index, type: bool, desc: "Regenerate notes/.index.json from files"}
+    - {name: integrations-live, type: bool, desc: "Probe calendar/gh/jira live (bypasses cache; surfaces upstream errors)"}
+    - {name: reap-focus-orphans, type: bool, desc: "Synthesize end rows for orphan focus starts (start_ts + 1s, topic preserved)"}
+
+tasks:
+  default:
+    desc: "Check jarvis health: profile, state schema, integrations"
+    aliases: []
+    example: |
+      jarvis doctor
+      jarvis doctor --path
+    cmd: bash {{.TASKFILE_DIR}}/doctor.sh

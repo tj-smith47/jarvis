@@ -1,0 +1,33 @@
+version: '3'
+
+vars:
+  FLAGS:
+    - {name: short,         short: s, type: bool, desc: "One-line summary instead of full brief"}
+    - {name: skip-calendar,           type: bool, desc: "Hide Calendar section"}
+    - {name: skip-prs,                type: bool, desc: "Hide PRs section"}
+    - {name: skip-jira,               type: bool, desc: "Hide Jira section"}
+    - {name: skip-deploys,            type: bool, desc: "Hide Deploys section"}
+
+tasks:
+  default:
+    desc: "Morning briefing — calendar, PRs, jira, deploys, oncall"
+    summary: |
+      Start-of-day dashboard backed by gh / jira / gcalcli (or ics) /
+      deploys.log / [oncall] config. Each section is hidden when its
+      backing tool / config is unavailable; --skip-* flags hide a
+      section explicitly.
+
+      Profile is selected via the persistent --profile flag.
+
+      Examples:
+        jarvis brief
+        jarvis brief --short
+        jarvis brief --skip-jira --profile work
+    vars:
+      FLAGS:
+        - {name: short,         short: s, type: bool, desc: "One-line summary instead of full brief"}
+        - {name: skip-calendar,           type: bool, desc: "Hide Calendar section"}
+        - {name: skip-prs,                type: bool, desc: "Hide PRs section"}
+        - {name: skip-jira,               type: bool, desc: "Hide Jira section"}
+        - {name: skip-deploys,            type: bool, desc: "Hide Deploys section"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
