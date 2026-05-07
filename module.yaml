@@ -1,0 +1,100 @@
+apiVersion: cfgd.io/v1alpha1
+kind: Module
+metadata:
+  name: jarvis
+  description: "jarvis — personal-ops CLI: brief, focus, note, task, remind, coffee, doctor, calendar."
+spec:
+  # jarvis is built on the clift bash framework — install clift first.
+  depends:
+    - clift
+
+  packages:
+    # Required runtime
+    - name: jq
+    - name: yq
+      prefer:
+        - brew
+        - snap
+
+    # Native helpers — needed to (re)build bin/jarvis-state, bin/jarvis-cal,
+    # bin/jarvis-when on first install. Pre-built binaries ship in the repo
+    # under bin/, but cfgd users may want to rebuild.
+    - name: go
+      prefer:
+        - brew
+        - apt
+      minVersion: "1.22"
+    - name: cargo
+      aliases:
+        apt: cargo
+        dnf: cargo
+        brew: rust
+    - name: python3
+      aliases:
+        brew: python@3.12
+
+    # Optional but heavily used by demos / interactive UX
+    - name: gum
+      prefer:
+        - brew
+    - name: glow
+      prefer:
+        - brew
+    - name: ripgrep
+    - name: dasel
+      prefer:
+        - brew
+    - name: bat
+
+    # Notifications / channels — optional; doctor surfaces missing ones.
+    - name: notify-send
+      aliases:
+        apt: libnotify-bin
+        dnf: libnotify
+      platforms:
+        - linux
+    - name: xdg-open
+      aliases:
+        apt: xdg-utils
+        dnf: xdg-utils
+      platforms:
+        - linux
+
+    # Calendar / integrations — optional, configured per-profile in
+    # ~/.config/jarvis/<profile>/config.toml.
+    - name: gcalcli
+      prefer:
+        - brew
+        - pipx
+    - name: gh
+      prefer:
+        - brew
+        - apt
+    - name: jira
+      prefer:
+        - brew
+
+  # Shipped to the box as a directory tree under ~/.local/share/jarvis.
+  files:
+    - source: git@github.com:tj-smith47/jarvis.git@main
+      target: ~/.local/share/jarvis
+
+  # Wire JARVIS_DIR so cmds/lib/* can resolve relative paths even when the
+  # wrapper is invoked from a non-standard location.
+  env:
+    - name: JARVIS_DIR
+      value: ~/.local/share/jarvis
+
+  # PATH-based wrapper. clift's wrapper at $JARVIS_DIR/bin/jarvis is the
+  # entry point; expose it via alias so it composes with cfgd-managed rc.
+  aliases:
+    - name: jarvis
+      command: "$HOME/.local/share/jarvis/bin/jarvis"
+
+  scripts:
+    # First-time setup after files land on disk:
+    #   1. build native helpers (Go + Rust + Python)
+    #   2. (re)render bin/jarvis wrapper via clift's setup.sh
+    postApply:
+      - cd ~/.local/share/jarvis && FRAMEWORK_DIR=~/.local/share/clift task build
+      - cd ~/.local/share/jarvis && RECONFIGURE_YES=1 CLIFT_COMPLETIONS=auto bash ~/.local/share/clift/lib/setup/setup.sh ~/.local/share/jarvis ~/.local/share/clift jarvis 1.0.0 icons-color standard

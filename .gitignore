@@ -3,6 +3,12 @@
 /bin/jarvis-cal
 /bin/jarvis-when
 
+# clift wrapper rendered by `task setup:cli` — generated, not source.
+/bin/jarvis
+
+# clift compiled flag/task cache (mtime-driven, regenerated on demand).
+/.clift/
+
 # go-task checksum cache for build:* idempotency.
 /.task/
 

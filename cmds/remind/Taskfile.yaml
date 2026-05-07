@@ -4,7 +4,8 @@ vars:
   FLAGS:
     - {name: in, type: string, desc: "Delay (e.g. 10s, 5m, 2h, 1d)",
        pattern: "^[0-9]+[smhd]$", group: when, exclusive: true}
-    - {name: at, type: string, desc: "Absolute time (HH:MM 24h or 'YYYY-MM-DD HH:MM')"}
+    - {name: at, type: string, desc: "Absolute time (HH:MM 24h or 'YYYY-MM-DD HH:MM')",
+       group: when, exclusive: true}
     - {name: repeat, type: string, desc: "Recurring cadence: daily | weekly | weekdays | weekends | <day-list> | <duration>"}
     - {name: until, type: string, desc: "Stop recurring after this date (YYYY-MM-DD)",
        pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
@@ -36,7 +37,8 @@ tasks:
       FLAGS:
         - {name: in, type: string, desc: "Delay (e.g. 10s, 5m, 2h, 1d)",
            pattern: "^[0-9]+[smhd]$", group: when, exclusive: true}
-        - {name: at, type: string, desc: "Absolute time (HH:MM 24h or 'YYYY-MM-DD HH:MM')"}
+        - {name: at, type: string, desc: "Absolute time (HH:MM 24h or 'YYYY-MM-DD HH:MM')",
+           group: when, exclusive: true}
         - {name: repeat, type: string, desc: "Recurring cadence: daily | weekly | weekdays | weekends | <day-list> | <duration>"}
         - {name: until, type: string, desc: "Stop recurring after this date (YYYY-MM-DD)",
            pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}

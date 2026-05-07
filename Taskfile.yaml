@@ -35,6 +35,8 @@ includes:
   update:
     taskfile: '{{.FRAMEWORK_DIR}}/lib/update'
     vars: {FRAMEWORK_DIR: '{{.FRAMEWORK_DIR}}'}
+  version:
+    taskfile: '{{.FRAMEWORK_DIR}}/lib/version'
   # User commands
   brief:
     taskfile: ./cmds/brief
