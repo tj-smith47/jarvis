@@ -466,7 +466,15 @@ if [[ -n "$git_log_lines" ]]; then
   had_yesterday=1
 fi
 if [[ -n "$jira_comments" ]]; then
-  printf '%s\n' "$jira_comments" | jq -r '"    - [" + .key + "] " + .body'
+  # Each row now carries the issue summary + comment URL (jira.sh emits
+  # them post-fix). Render is "  - [KEY] summary — body  url" so the
+  # reader doesn't need to remember what KEY is, and can click through to
+  # the comment.
+  printf '%s\n' "$jira_comments" | jq -r '
+    "    - [" + .key + "]" +
+    (if (.summary // "") != "" then " " + .summary + " — " else " " end) +
+    .body +
+    (if (.url // "") != "" then "  " + .url else "" end)'
   had_yesterday=1
 fi
 if [[ -n "$yesterday_tasks_done" ]]; then

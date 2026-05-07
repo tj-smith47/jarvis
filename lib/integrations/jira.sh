@@ -73,24 +73,38 @@ jira_my_comments_since() {
   local since="$1" profile="${2:-${JARVIS_PROFILE:-default}}"
   command -v jira >/dev/null 2>&1 || return 1
   local me; me="$(_jira_me)" || return 1
+  # in_flight rows carry key + summary + url; we keep summary/url in a side
+  # map so each emitted comment row can carry its issue's display context
+  # ("[KEY] body" alone forces the reader to remember what KEY is, and the
+  # comment URL was previously dropped — there was no way to click through
+  # to the comment from a standup draft).
+  local in_flight
+  in_flight="$(jira_in_flight "$profile")" || return 1
+  [[ -z "$in_flight" ]] && return 0
+  local base; base="$(_jira_base_url "$profile")"
   local keys
-  keys="$(jira_in_flight "$profile" | jq -r '.key')" || return 1
+  keys="$(printf '%s\n' "$in_flight" | jq -r '.key')"
   [[ -z "$keys" ]] && return 0
-  local key out
+  local key out summary url
   while IFS= read -r key; do
     [[ -z "$key" ]] && continue
+    summary="$(printf '%s\n' "$in_flight" | jq -r --arg k "$key" 'select(.key == $k) | .summary' | head -1)"
+    url="$base/browse/$key"
     # 2>/dev/null is intentional: a multi-key sweep over in-flight issues
     # routinely hits 404s when an issue was just transitioned/deleted; the
     # noise on stderr drowns real signals. `|| continue` swallows the row
     # quietly. Other integrations (gh, deploys) don't loop, so they don't
     # need this guard.
     out="$(jira issue comment list "$key" --plain --columns id,author,created,body 2>/dev/null)" || continue
-    printf '%s\n' "$out" | awk -F'\t' -v me="$me" -v since="$since" -v key="$key" '
+    printf '%s\n' "$out" | awk -F'\t' \
+        -v me="$me" -v since="$since" -v key="$key" \
+        -v summary="$summary" -v url="$url" '
+      function jesc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); return s }
       NR > 1 && NF >= 4 && $2 == me && $3 >= since {
         body=""
         for (i=4; i<=NF; i++) body = body (i==4?"":" ") $i
-        gsub(/\\/, "\\\\", body); gsub(/"/, "\\\"", body)
-        printf "{\"key\":\"%s\",\"ts\":\"%s\",\"body\":\"%s\"}\n", key, $3, body
+        printf "{\"key\":\"%s\",\"ts\":\"%s\",\"body\":\"%s\",\"summary\":\"%s\",\"url\":\"%s\"}\n",
+               key, $3, jesc(body), jesc(summary), jesc(url)
       }'
   done <<< "$keys"
 }

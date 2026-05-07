@@ -98,6 +98,37 @@ calendar=""; prs=""; jira_rows=""; deploys=""; oncall=""; reminders=""
 [[ "$skip_dep"  != "true" ]] && deploys="$(_silence deploys_recent "$day_start" "$profile" || true)"
 oncall="$(_silence oncall_show "$profile" || true)"
 
+# Focus one-liner: yesterday's totals + top topic. Pre-fix `focus.log`
+# was a write-only journal as far as `brief` was concerned — the user
+# had to drop into `focus stats` to see anything they did the day before.
+focus_yesterday=""
+focus_log="$profile_dir/focus.log"
+if [[ -f "$focus_log" ]]; then
+  _now_epoch="$(native_now_epoch)"
+  yesterday_date="$(native_epoch_to_iso $((_now_epoch - 86400)) 2>/dev/null | cut -c1-10)"
+  if [[ -n "$yesterday_date" ]]; then
+    focus_yesterday="$(jq -rs --arg y "$yesterday_date" '
+      [ .[] | select(.event=="end" and ((.ts // "") | startswith($y))) ] as $ends
+      | ($ends | map(.elapsed_seconds // 0) | add // 0) as $secs
+      | ($secs / 60 | floor) as $m
+      | ($ends
+          | map(.topic // "(untitled)")
+          | group_by(.)
+          | map({t:.[0], n:length})
+          | sort_by(-.n)
+          | .[0].t // "") as $top
+      | if $m == 0 then ""
+        elif $m < 60 then
+          "\($m) min" + (if $top != "" then " on \($top)" else "" end)
+        else
+          ($m / 60 | floor) as $h
+          | (if ($m % 60) == 0 then "\($h)h" else "\($h)h \($m % 60)m" end) as $hm
+          | "\($hm)" + (if $top != "" then " on \($top)" else "" end)
+        end
+    ' < "$focus_log" 2>/dev/null || true)"
+  fi
+fi
+
 # Reminders firing later today. The data has always been in
 # <profile>/reminders/*.json — only `status` (the dashboard) consumed it
 # pre-fix, so the user reading their morning brief never saw "you have a
@@ -212,6 +243,10 @@ if [[ -n "$prs" ]]; then
   printf '\n'
 fi
 
+if [[ -n "$focus_yesterday" ]]; then
+  printf '  \033[1mFocus yesterday\033[0m  %s\n\n' "$focus_yesterday"
+fi
+
 if [[ -n "$reminders" ]]; then
   printf '  \033[1mReminders today\033[0m\n'
   printf '%s\n' "$reminders" | jq -r '
@@ -243,7 +278,7 @@ fi
 # All-empty hint: if every section is gated off (no integrations configured /
 # no data), the user gets only the "Good morning" line. Surface a single hint
 # pointing at doctor so the silence is actionable.
-if [[ -z "$calendar" && -z "$prs" && -z "$jira_rows" && -z "$deploys" && -z "$oncall" && -z "$reminders" ]]; then
+if [[ -z "$calendar" && -z "$prs" && -z "$jira_rows" && -z "$deploys" && -z "$oncall" && -z "$reminders" && -z "$focus_yesterday" ]]; then
   if declare -F log_info >/dev/null 2>&1; then
     log_info "no integrations configured — run \`jarvis doctor\` for diagnostics"
   else
