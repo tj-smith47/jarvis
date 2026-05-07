@@ -135,19 +135,58 @@ if [[ "${#git_repos[@]}" -eq 0 ]]; then
 fi
 
 # ----------------------------------------------------------- yesterday: git
-# Author-date filter via awk (see header comment).
+# Author-date filter via awk (see header comment). Each line is prefixed
+# with the repo's owner/name slug (or basename if no remote) so multi-repo
+# standups stay readable; if the commit subject ends in a "(#NNN)" PR
+# ref, that gets pulled out as `<slug>#<NNN>`, otherwise the short hash
+# is appended (`<slug>@<short>`) so every row is actionable.
+_standup_repo_slug() {
+  local dir="$1" origin
+  origin="$(cd "$dir" 2>/dev/null && git config remote.origin.url 2>/dev/null || true)"
+  if [[ -z "$origin" ]]; then
+    (cd "$dir" 2>/dev/null && basename "$(pwd)")
+    return 0
+  fi
+  # Normalize formats so split-by-/ leaves owner/name as the last two parts:
+  #   https://github.com/owner/name(.git)? → owner/name
+  #   git@github.com:owner/name(.git)?     → owner/name (after replacing : with /)
+  #   ssh://git@github.com/owner/name      → owner/name
+  printf '%s' "$origin" | awk '{
+    sub(/\.git$/, "")
+    sub(/\/$/, "")
+    gsub(/:/, "/")
+    n = split($0, a, "/")
+    if (n >= 2) print a[n-1] "/" a[n]
+    else        print a[n]
+  }'
+}
+
 git_log_lines=""
 for r in "${git_repos[@]}"; do
   [[ -d "$r/.git" ]] || continue
   email="$(cd "$r" 2>/dev/null && git config user.email 2>/dev/null)" || email=""
   [[ -z "$email" ]] && continue
-  # Author-date filter via awk so per-commit `--date=...` (which sets
-  # author date but not commit date) is honored.
+  repo_slug="$(_standup_repo_slug "$r")"
+  # `%H|%h|%s` carries author-date, short hash, subject. Awk extracts the
+  # PR ref from a trailing `(#NNN)` if present; otherwise falls back to
+  # the short hash so the reader can `git show` the commit either way.
   lines="$(
     cd "$r" 2>/dev/null && \
-      git log --author="$email" --pretty=format:'%aI|%s' 2>/dev/null \
-        | awk -F'|' -v s="$since_iso" -v u="$now_iso" '
-            $1 >= s && $1 <= u { sub(/^[^|]*\|/, ""); print "- " $0 }
+      git log --author="$email" --pretty=format:'%aI|%h|%s' 2>/dev/null \
+        | awk -F'|' -v s="$since_iso" -v u="$now_iso" -v repo="$repo_slug" '
+            $1 >= s && $1 <= u {
+              hash = $2
+              # Subject may contain |; rejoin slots 3..NF.
+              subj = $3
+              for (i = 4; i <= NF; i++) subj = subj "|" $i
+              pr = ""
+              if (match(subj, / \(#[0-9]+\)$/)) {
+                pr = substr(subj, RSTART + 3, RLENGTH - 4)
+                subj = substr(subj, 1, RSTART - 1)
+              }
+              ref = (pr != "" ? "#" pr : "@" hash)
+              printf "- %s%s  %s\n", repo, ref, subj
+            }
           '
   )" || lines=""
   [[ -n "$lines" ]] && git_log_lines+="$lines"$'\n'

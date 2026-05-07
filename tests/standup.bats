@@ -95,3 +95,34 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Yesterday"* ]]
 }
+
+@test "yesterday-git rows are prefixed with repo slug and PR ref or short hash" {
+  # Add a commit with a (#NNN) PR-merge-style suffix so the PR-ref extraction
+  # path is exercised. Existing fixture commits have no (#NNN), so they fall
+  # through to the @<short-hash> path — both are asserted.
+  ( cd "$REPO" \
+    && git remote add origin https://github.com/acme/widgets.git \
+    && git commit --allow-empty -m "feat: add fancy thing (#42)" \
+                  --date="2026-04-30T13:00:00Z" )
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" \
+    --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  # PR-ref form on the (#42) commit
+  [[ "$output" == *"acme/widgets#42"*"feat: add fancy thing"* ]]
+  # Hash form on a commit without (#NNN) — slug + @ + 7-char short hash
+  [[ "$output" =~ acme/widgets@[0-9a-f]{7}[[:space:]]+wip:\ yesterday\'s\ work ]]
+}
+
+@test "yesterday-git falls back to repo basename when no remote is configured" {
+  REPO_NOREMOTE="$TEST_DIR/no-remote-repo"
+  mkdir -p "$REPO_NOREMOTE"
+  ( cd "$REPO_NOREMOTE" && git init -q --initial-branch=main \
+    && git config user.email alice@example.com \
+    && git config user.name alice \
+    && git commit --allow-empty -m "fix: noremote work" --date="2026-04-30T11:00:00Z" )
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" \
+    --since 1d --repo "$REPO_NOREMOTE" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no-remote-repo@"* ]]
+  [[ "$output" == *"fix: noremote work"* ]]
+}
