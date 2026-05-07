@@ -135,14 +135,25 @@ fi
 printf '\n'
 
 if [[ -n "$calendar" ]]; then
-  # Calendar provider NDJSON shape is {start,end,title,url}. Until this fix
-  # the renderer dropped .url silently — every meeting joined elsewhere
-  # (lib/calendar/meeting_url.sh) but the brief itself surfaced no link.
+  # Calendar provider NDJSON shape is {start,end,title,url,...}. The renderer
+  # used to drop .url silently and lacked duration entirely — meetings could
+  # be joined via standup --join, but the brief surfaced neither link nor a
+  # 30-min-vs-2-hour signal. Now both render alongside the title.
   printf '  \033[1mCalendar\033[0m\n'
   printf '%s\n' "$calendar" | jq -r '
+    def duration_str:
+      if .end and .end != "" and .end != .start then
+        ((.end | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) -
+         (.start | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) as $secs
+        | ($secs / 60 | floor) as $m
+        | if $m < 60 then "  (\($m)m)"
+          elif ($m % 60) == 0 then "  (\($m / 60 | floor)h)"
+          else "  (\($m / 60 | floor)h \($m % 60)m)" end
+      else "" end;
     "    " +
     (.start | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
     "  " + .title +
+    duration_str +
     (if (.url // "") != "" then "  [2m" + .url + "[0m" else "" end)'
   printf '\n'
 fi

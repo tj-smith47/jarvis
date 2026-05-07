@@ -161,3 +161,87 @@ EOF
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | jq -e '.title == "Sam'\''s \"1:1\" review"' > /dev/null
 }
+
+@test "STATUS:CANCELLED events are dropped" {
+  cat > "$JARVIS_HOME/test/cal.ics" <<'EOF'
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART:20260501T100000Z
+DTEND:20260501T103000Z
+SUMMARY:cancelled meeting
+URL:https://example/cancel
+STATUS:CANCELLED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260501T140000Z
+DTEND:20260501T143000Z
+SUMMARY:live meeting
+URL:https://example/live
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
+EOF
+  printf '[calendar]\nprovider = "ics"\n[calendar.ics]\nsource = "%s"\n' \
+    "$JARVIS_HOME/test/cal.ics" > "$JARVIS_HOME/test/config.toml"
+  run calendar_ics_events "2026-05-01T00:00:00Z" "2026-05-02T00:00:00Z" test
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | wc -l)" -eq 1 ]
+  printf '%s\n' "$output" | jq -e '.title == "live meeting"' > /dev/null
+}
+
+@test "URL absent → falls back to meeting_url_extract on LOCATION" {
+  cat > "$JARVIS_HOME/test/cal.ics" <<'EOF'
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART:20260501T100000Z
+DTEND:20260501T103000Z
+SUMMARY:planning sync
+LOCATION:Zoom: https://zoom.us/j/9876543210?pwd=xyz
+END:VEVENT
+END:VCALENDAR
+EOF
+  printf '[calendar]\nprovider = "ics"\n[calendar.ics]\nsource = "%s"\n' \
+    "$JARVIS_HOME/test/cal.ics" > "$JARVIS_HOME/test/config.toml"
+  run calendar_ics_events "2026-05-01T00:00:00Z" "2026-05-02T00:00:00Z" test
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | jq -e '.url == "https://zoom.us/j/9876543210?pwd=xyz"' > /dev/null
+}
+
+@test "URL absent and LOCATION has no link → falls back to DESCRIPTION" {
+  cat > "$JARVIS_HOME/test/cal.ics" <<'EOF'
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART:20260501T100000Z
+DTEND:20260501T103000Z
+SUMMARY:1on1
+LOCATION:Conf Room A
+DESCRIPTION:Join here: https://meet.google.com/abc-defg-hij  Agenda: ...
+END:VEVENT
+END:VCALENDAR
+EOF
+  printf '[calendar]\nprovider = "ics"\n[calendar.ics]\nsource = "%s"\n' \
+    "$JARVIS_HOME/test/cal.ics" > "$JARVIS_HOME/test/config.toml"
+  run calendar_ics_events "2026-05-01T00:00:00Z" "2026-05-02T00:00:00Z" test
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | jq -e '.url == "https://meet.google.com/abc-defg-hij"' > /dev/null
+}
+
+@test "explicit URL: field wins over LOCATION/DESCRIPTION fallback" {
+  cat > "$JARVIS_HOME/test/cal.ics" <<'EOF'
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART:20260501T100000Z
+DTEND:20260501T103000Z
+SUMMARY:overlap
+URL:https://canonical.example/meet
+LOCATION:also https://zoom.us/j/000
+DESCRIPTION:also https://meet.google.com/zzz-zzz-zzz
+END:VEVENT
+END:VCALENDAR
+EOF
+  printf '[calendar]\nprovider = "ics"\n[calendar.ics]\nsource = "%s"\n' \
+    "$JARVIS_HOME/test/cal.ics" > "$JARVIS_HOME/test/config.toml"
+  run calendar_ics_events "2026-05-01T00:00:00Z" "2026-05-02T00:00:00Z" test
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | jq -e '.url == "https://canonical.example/meet"' > /dev/null
+}
