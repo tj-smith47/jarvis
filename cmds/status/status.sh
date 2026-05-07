@@ -46,21 +46,22 @@ fi
 
 want_json="${CLIFT_FLAGS[json]:-}"
 want_yaml="${CLIFT_FLAGS[yaml]:-}"
-profile="${CLIFT_FLAGS[profile]:-${JARVIS_PROFILE:-default}}"
-[[ -z "$profile" ]] && profile="${JARVIS_PROFILE:-default}"
 
 if [[ "$want_json" == "true" && "$want_yaml" == "true" ]]; then
   clift_exit 2 "--json and --yaml are mutually exclusive"
 fi
 
-# state_profile_dir reads JARVIS_PROFILE; honor explicit --profile.
-JARVIS_PROFILE="$profile"
+# state_profile_dir centralizes precedence (CLIFT_FLAGS[profile] >
+# CLIFT_FLAG_PROFILE > JARVIS_PROFILE > default) and exports JARVIS_PROFILE.
 profile_dir="$(state_profile_dir)"
+profile="$JARVIS_PROFILE"
 
-# "now" — overridable for deterministic tests.
-now_iso="${JARVIS_FAKE_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-now_epoch="$(date -u -d "$now_iso" +%s 2>/dev/null \
-              || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$now_iso" +%s)"
+# shellcheck source=/dev/null
+source "${CLI_DIR}/lib/native/clock.sh"
+
+# "now" — overridable for deterministic tests; clock helpers honor JARVIS_FAKE_NOW.
+now_iso="$(native_now_iso)"
+now_epoch="$(native_now_epoch)"
 today_date="${now_iso%T*}"
 
 # ------------------------------------------------------------- tasks
@@ -126,8 +127,7 @@ if [[ -d "$profile_dir/reminders" ]]; then
     reminders_scheduled="$(jq -r '.count' <<< "$rollup")"
     next_at="$(jq -r '.next_at // empty' <<< "$rollup")"
     if [[ -n "$next_at" ]]; then
-      next_epoch="$(date -u -d "$next_at" +%s 2>/dev/null \
-                    || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$next_at" +%s)"
+      next_epoch="$(native_resolve_to_epoch "$next_at")"
       next_in="$(( (next_epoch - now_epoch + 30) / 60 ))"
       next_msg="$(jq -c '.next_msg' <<< "$rollup")"
     fi

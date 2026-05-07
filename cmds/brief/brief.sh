@@ -36,20 +36,18 @@ if ! declare -p CLIFT_FLAGS >/dev/null 2>&1; then
 fi
 
 short="${CLIFT_FLAGS[short]:-}"
-profile="${CLIFT_FLAGS[profile]:-${JARVIS_PROFILE:-default}}"
-[[ -z "$profile" ]] && profile="${JARVIS_PROFILE:-default}"
 skip_cal="${CLIFT_FLAGS[skip-calendar]:-}"
 skip_prs="${CLIFT_FLAGS[skip-prs]:-}"
 skip_jira="${CLIFT_FLAGS[skip-jira]:-}"
 skip_dep="${CLIFT_FLAGS[skip-deploys]:-}"
 
-# state_profile_dir / config_get / cache helpers all read JARVIS_PROFILE;
-# honor an explicit --profile by exporting before sourcing.
-JARVIS_PROFILE="$profile"
-export JARVIS_PROFILE
-
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/profile.sh"
+# state_profile_dir resolves the precedence chain (CLIFT_FLAGS[profile] >
+# CLIFT_FLAG_PROFILE env > JARVIS_PROFILE > default) and exports
+# JARVIS_PROFILE so downstream libs see the resolved value.
+state_profile_dir >/dev/null
+profile="$JARVIS_PROFILE"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/config.sh"
 # shellcheck source=/dev/null
@@ -72,13 +70,13 @@ source "${CLI_DIR}/lib/integrations/jira.sh"
 source "${CLI_DIR}/lib/integrations/deploys.sh"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/integrations/oncall.sh"
+# shellcheck source=/dev/null
+source "${CLI_DIR}/lib/native/clock.sh"
 
 # "now" — overridable for deterministic tests. Day window is [00:00 today, 00:00 tomorrow).
-now_iso="${JARVIS_FAKE_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-today_date="${now_iso%T*}"
-day_start="${today_date}T00:00:00Z"
-day_end="$(date -u -d "$today_date +1 day" +%Y-%m-%dT00:00:00Z 2>/dev/null \
-        || date -u -j -v+1d -f "%Y-%m-%d" "$today_date" +%Y-%m-%dT00:00:00Z)"
+now_iso="$(native_now_iso)"
+day_start="$(native_day_start "$now_iso")"
+day_end="$(native_day_boundary "$day_start" +1d)"
 
 # Gather sections. Each lib returns:
 #   - exit 0 + NDJSON rows when populated

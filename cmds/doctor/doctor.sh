@@ -9,6 +9,8 @@ set -euo pipefail
 source "${FRAMEWORK_DIR}/lib/log/log.sh"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/profile.sh"
+# shellcheck source=/dev/null
+source "${CLI_DIR}/lib/native/clock.sh"
 
 # Flag resolution: prefer pre-populated CLIFT_FLAGS (router pipeline);
 # otherwise parse argv ourselves so direct-invocation tests get identical
@@ -173,11 +175,9 @@ _doctor_last_heartbeat() {
 }
 
 _doctor_now_epoch() {
-  if [[ -n "${JARVIS_FAKE_NOW:-}" ]]; then
-    date -u -d "$JARVIS_FAKE_NOW" +%s 2>/dev/null
-  else
-    date +%s
-  fi
+  # Single source of truth: native_now_epoch honors JARVIS_FAKE_NOW and
+  # JARVIS_TODAY via the jarvis-when binary, with no bilateral date math.
+  native_now_epoch
 }
 
 _doctor_format_age() {
@@ -207,7 +207,7 @@ _doctor_scheduler_line() {
   fi
 
   if last_iso="$(_doctor_last_heartbeat "$log")"; then
-    last_e="$(date -u -d "$last_iso" +%s 2>/dev/null || printf '0')"
+    last_e="$(native_resolve_to_epoch "$last_iso" 2>/dev/null || printf '0')"
     now_e="$(_doctor_now_epoch)"
     age=$((now_e - last_e))
     if (( age > 300 )); then
@@ -357,11 +357,9 @@ if [[ "$live_flag" == "true" ]]; then
     # shellcheck source=/dev/null
     source "${CLI_DIR}/lib/calendar/applescript.sh"
 
-    now_iso="${JARVIS_FAKE_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-    today_date="${now_iso%T*}"
-    day_start="${today_date}T00:00:00Z"
-    day_end="$(date -u -d "$today_date +1 day" +%Y-%m-%dT00:00:00Z 2>/dev/null \
-            || date -u -j -v+1d -f "%Y-%m-%d" "$today_date" +%Y-%m-%dT00:00:00Z)"
+    now_iso="$(native_now_iso)"
+    day_start="$(native_day_start "$now_iso")"
+    day_end="$(native_day_boundary "$day_start" +1d)"
 
     fn="calendar_${cal_provider}_events"
     if ! declare -F "$fn" >/dev/null; then

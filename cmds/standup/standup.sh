@@ -50,17 +50,15 @@ fi
 since="${CLIFT_FLAGS[since]:-1d}"
 repo="${CLIFT_FLAGS[repo]:-}"
 all_repos="${CLIFT_FLAGS[all-repos]:-}"
-profile="${CLIFT_FLAGS[profile]:-${JARVIS_PROFILE:-default}}"
-[[ -z "$profile" ]] && profile="${JARVIS_PROFILE:-default}"
 join="${CLIFT_FLAGS[join]:-}"
 meeting_url="${CLIFT_FLAGS[meeting]:-}"
 
-# Honor --profile by exporting JARVIS_PROFILE before sourcing libs that read it.
-JARVIS_PROFILE="$profile"
-export JARVIS_PROFILE
-
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/profile.sh"
+# state_profile_dir centralizes the precedence chain and exports
+# JARVIS_PROFILE so downstream libs (calendar, integrations) read it back.
+state_profile_dir >/dev/null
+profile="$JARVIS_PROFILE"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/config.sh"
 # shellcheck source=/dev/null
@@ -82,18 +80,22 @@ source "${CLI_DIR}/lib/calendar/gcalcli.sh"
 source "${CLI_DIR}/lib/calendar/applescript.sh"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/calendar/meeting_url.sh"
+# shellcheck source=/dev/null
+source "${CLI_DIR}/lib/native/clock.sh"
 
 profile_dir="$(state_profile_dir)"
 
-# "now" — overridable for deterministic tests.
-now_iso="${JARVIS_FAKE_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-now_epoch="$(date -u -d "$now_iso" +%s 2>/dev/null \
-              || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$now_iso" +%s)"
+# "now" — overridable for deterministic tests; clock helpers honor JARVIS_FAKE_NOW.
+now_iso="$(native_now_iso)"
+now_epoch="$(native_now_epoch)"
 
 # Resolve --since (Ns|Nm|Nh|Nd|Nw) to a window start ISO. Day/week units
 # anchor to start-of-day-today (UTC) so `--since 1d` reads "everything
 # from yesterday morning forward" — the natural standup window. Sub-day
 # units (s/m/h) are exact rolling windows. Bad input falls back to 1d.
+_anchor_today_midnight() {
+  native_resolve_to_epoch "$(native_day_start "$now_iso")"
+}
 anchor_epoch="$now_epoch"
 if [[ "$since" =~ ^([0-9]+)([smhdw])$ ]]; then
   n="${BASH_REMATCH[1]}"; u="${BASH_REMATCH[2]}"
@@ -101,27 +103,15 @@ if [[ "$since" =~ ^([0-9]+)([smhdw])$ ]]; then
     s) sec=$n ;;
     m) sec=$((n*60)) ;;
     h) sec=$((n*3600)) ;;
-    d) sec=$((n*86400))
-       # Anchor to 00:00 UTC of today so 1d = "yesterday + today so far".
-       today_date="${now_iso%T*}"
-       anchor_epoch="$(date -u -d "${today_date}T00:00:00Z" +%s 2>/dev/null \
-                       || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "${today_date}T00:00:00Z" +%s)"
-       ;;
-    w) sec=$((n*604800))
-       today_date="${now_iso%T*}"
-       anchor_epoch="$(date -u -d "${today_date}T00:00:00Z" +%s 2>/dev/null \
-                       || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "${today_date}T00:00:00Z" +%s)"
-       ;;
+    d) sec=$((n*86400)); anchor_epoch="$(_anchor_today_midnight)" ;;
+    w) sec=$((n*604800)); anchor_epoch="$(_anchor_today_midnight)" ;;
   esac
 else
   sec=86400
-  today_date="${now_iso%T*}"
-  anchor_epoch="$(date -u -d "${today_date}T00:00:00Z" +%s 2>/dev/null \
-                  || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "${today_date}T00:00:00Z" +%s)"
+  anchor_epoch="$(_anchor_today_midnight)"
 fi
 since_epoch=$(( anchor_epoch - sec ))
-since_iso="$(date -u -d "@$since_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-            || date -u -j -f %s "$since_epoch" +%Y-%m-%dT%H:%M:%SZ)"
+since_iso="$(native_epoch_to_iso "$since_epoch")"
 
 # ----------------------------------------------------------- repo list
 # --all-repos overrides --repo. Otherwise fall back to --repo, then cwd.
