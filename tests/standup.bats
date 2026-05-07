@@ -157,6 +157,50 @@ EOF
   [[ "$output" != *"resolved blocker"* ]]
 }
 
+@test "yesterday surfaces tasks closed in the standup window" {
+  # Drop a done-yesterday task into the fixture profile.
+  jq -nc \
+    '{slug:"shipped",title:"shipped audit doc",status:"done",
+      done_at:"2026-04-30T17:00:00Z",created_at:"2026-04-29T10:00:00Z"}' \
+    > "$JARVIS_HOME/test/tasks/shipped.json"
+  # And a task closed long before the window — must NOT appear.
+  jq -nc \
+    '{slug:"old",title:"old work",status:"done",
+      done_at:"2026-04-01T10:00:00Z",created_at:"2026-03-01T10:00:00Z"}' \
+    > "$JARVIS_HOME/test/tasks/old.json"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"✓"*"shipped audit doc"* ]]
+  [[ "$output" != *"old work"* ]]
+}
+
+@test "yesterday surfaces focus minutes and top topics from focus.log" {
+  # Two end-rows on yesterday (relative to JARVIS_FAKE_NOW=2026-05-01T15:00:00Z),
+  # both with topic "jarvis-audit", totaling 90 minutes.
+  cat > "$JARVIS_HOME/test/focus.log" <<EOF
+{"ts":"2026-04-30T09:00:00Z","event":"start","topic":"jarvis-audit"}
+{"ts":"2026-04-30T10:00:00Z","event":"end","topic":"jarvis-audit","elapsed_seconds":3600}
+{"ts":"2026-04-30T13:00:00Z","event":"start","topic":"jarvis-audit"}
+{"ts":"2026-04-30T13:30:00Z","event":"end","topic":"jarvis-audit","elapsed_seconds":1800}
+EOF
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"focus: 1h 30m"*"jarvis-audit"* ]]
+}
+
+@test "yesterday surfaces count of reminders that fired in window" {
+  # Two delivered, one failed (filtered), one outside the window (filtered).
+  cat > "$JARVIS_HOME/test/notify.log" <<EOF
+{"ts":"2026-04-30T10:00:00Z","channel":"local","ok":true,"message":"a"}
+{"ts":"2026-04-30T15:00:00Z","channel":"local","ok":true,"message":"b"}
+{"ts":"2026-04-30T16:00:00Z","channel":"local","ok":false,"message":"c","error":"fail"}
+{"ts":"2026-04-01T10:00:00Z","channel":"local","ok":true,"message":"old"}
+EOF
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2 reminders fired"* ]]
+}
+
 @test "today's meetings render as their own section after Today" {
   # Pre-fix, standup never showed today's calendar — a standup draft that
   # doesn't surface "I have a 1:1 at 14:00" is missing half the picture.

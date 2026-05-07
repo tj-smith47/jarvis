@@ -202,6 +202,78 @@ _silence() {
 # ----------------------------------------------------------- yesterday: jira
 jira_comments="$(_silence jira_my_comments_since "$since_iso" "$profile" || true)"
 
+# ----------------------------------------------------------- yesterday: tasks closed
+# Tasks marked done in [since_iso, now_iso] never appeared in the yesterday
+# narrative — only git commits + jira comments did. Adding closed tasks
+# rounds out "what I shipped" beyond just code.
+yesterday_tasks_done=""
+if [[ -d "$profile_dir/tasks" ]]; then
+  shopt -s nullglob
+  _yt_files=( "$profile_dir/tasks"/*.json )
+  shopt -u nullglob
+  if (( ${#_yt_files[@]} > 0 )); then
+    yesterday_tasks_done="$(jq -rs --arg s "$since_iso" --arg n "$now_iso" '
+      [ .[] | select((.status // "") == "done"
+                     and (.done_at // "") >= $s
+                     and (.done_at // "") <= $n) ]
+      | sort_by(.done_at)
+      | .[]
+      | "- ✓ " + (.title // .slug // "(untitled)")
+    ' "${_yt_files[@]}" 2>/dev/null || true)"
+  fi
+fi
+
+# ----------------------------------------------------------- yesterday: focus sessions
+# focus.log captures end-rows with elapsed_seconds + topic. Aggregating to
+# total minutes + top 1-2 topics gives the standup reader a one-line "I
+# spent 4h on X yesterday" without forcing them to dig into `focus stats`.
+yesterday_focus=""
+focus_log="$profile_dir/focus.log"
+if [[ -f "$focus_log" ]]; then
+  yesterday_focus="$(jq -rs --arg s "$since_iso" --arg n "$now_iso" '
+    [ .[] | select(.event == "end"
+                   and (.elapsed_seconds // 0) > 0
+                   and (.ts // "") >= $s
+                   and (.ts // "") <= $n) ] as $ends
+    | ($ends | map(.elapsed_seconds) | add // 0) as $secs
+    | ($secs / 60 | floor) as $m
+    | ($ends | map(.topic // "(untitled)")
+            | group_by(.)
+            | map({topic:.[0], count:length})
+            | sort_by(-.count)
+            | .[:2]
+            | map(.topic)
+            | join(", ")) as $top
+    | if $m == 0 then ""
+      elif $m < 60 then
+        "- focus: \($m) min" + (if $top != "" then " on \($top)" else "" end)
+      else
+        ($m / 60 | floor) as $h
+        | (if ($m % 60) == 0 then "\($h)h" else "\($h)h \($m % 60)m" end) as $hm
+        | "- focus: \($hm)" + (if $top != "" then " on \($top)" else "" end)
+      end
+  ' < "$focus_log" 2>/dev/null || true)"
+fi
+
+# ----------------------------------------------------------- yesterday: reminders fired
+# notify.log carries every channel-attempt row. Successfully-delivered
+# reminders in the standup window are part of "what happened" — without
+# this surface the user has to `cat notify.log` to know what fired.
+yesterday_reminders_fired=""
+notify_log="$profile_dir/notify.log"
+if [[ -f "$notify_log" ]]; then
+  _yr_count="$(jq -rs --arg s "$since_iso" --arg n "$now_iso" '
+    [ .[] | select((.ok // false) == true
+                   and (.ts // "") >= $s
+                   and (.ts // "") <= $n
+                   and (.channel // "") != "tick.heartbeat") ]
+    | length
+  ' < "$notify_log" 2>/dev/null || printf '0')"
+  if [[ "${_yr_count:-0}" -gt 0 ]]; then
+    yesterday_reminders_fired="- $_yr_count reminder$([[ "$_yr_count" -ne 1 ]] && printf s) fired"
+  fi
+fi
+
 # ----------------------------------------------------------- today: tasks
 open_tasks=""
 if [[ -d "$profile_dir/tasks" ]]; then
@@ -395,6 +467,18 @@ if [[ -n "$git_log_lines" ]]; then
 fi
 if [[ -n "$jira_comments" ]]; then
   printf '%s\n' "$jira_comments" | jq -r '"    - [" + .key + "] " + .body'
+  had_yesterday=1
+fi
+if [[ -n "$yesterday_tasks_done" ]]; then
+  printf '%s\n' "$yesterday_tasks_done" | sed 's/^/    /'
+  had_yesterday=1
+fi
+if [[ -n "$yesterday_focus" ]]; then
+  printf '    %s\n' "$yesterday_focus"
+  had_yesterday=1
+fi
+if [[ -n "$yesterday_reminders_fired" ]]; then
+  printf '    %s\n' "$yesterday_reminders_fired"
   had_yesterday=1
 fi
 (( had_yesterday == 0 )) && printf '    (none)\n'
