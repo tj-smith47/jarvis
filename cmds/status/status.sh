@@ -141,7 +141,13 @@ fi
 # (auth/network failures surface in `jarvis doctor`, not the dashboard).
 jira_count=0
 if command -v jira >/dev/null 2>&1; then
-  jira_count="$(jira_in_flight "$profile" 2>/dev/null | grep -c . || true)"
+  # `--verbose` lets jira's stderr through so auth/network failures are
+  # visible — default stays silent because status is hot-path UX.
+  if [[ "${CLIFT_FLAGS[verbose]:-}" == "true" ]]; then
+    jira_count="$(jira_in_flight "$profile" | grep -c . || true)"
+  else
+    jira_count="$(jira_in_flight "$profile" 2>/dev/null | grep -c . || true)"
+  fi
 fi
 
 # ------------------------------------------------------------- render

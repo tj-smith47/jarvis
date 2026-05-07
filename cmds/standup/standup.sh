@@ -153,8 +153,15 @@ for r in "${git_repos[@]}"; do
   [[ -n "$lines" ]] && git_log_lines+="$lines"$'\n'
 done
 
+# `--verbose` lets integration stderr through so auth/network failures
+# are visible without dropping into `jarvis doctor --integrations-live`.
+verbose="${CLIFT_FLAGS[verbose]:-}"
+_silence() {
+  if [[ "$verbose" == "true" ]]; then "$@"; else "$@" 2>/dev/null; fi
+}
+
 # ----------------------------------------------------------- yesterday: jira
-jira_comments="$(jira_my_comments_since "$since_iso" "$profile" 2>/dev/null || true)"
+jira_comments="$(_silence jira_my_comments_since "$since_iso" "$profile" || true)"
 
 # ----------------------------------------------------------- today: tasks
 open_tasks=""
@@ -171,7 +178,7 @@ if [[ -d "$profile_dir/tasks" ]]; then
 fi
 
 # ----------------------------------------------------------- today: jira
-jira_today="$(jira_in_flight "$profile" 2>/dev/null || true)"
+jira_today="$(_silence jira_in_flight "$profile" || true)"
 
 # ----------------------------------------------------------- blockers
 blockers=""

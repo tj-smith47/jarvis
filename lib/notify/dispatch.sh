@@ -34,6 +34,15 @@ notify_dispatch() {
     return 2
   fi
 
+  # Audit trail before fan-out: when --quiet is set the channels' own logs
+  # are suppressed too, so this is the user's only signal that a dispatch
+  # was attempted at all. log_info honors QUIET, so --quiet still silences.
+  if declare -F log_info >/dev/null 2>&1; then
+    local _via_str
+    _via_str="$(jq -r '.via | join(",")' <<< "$reminder_json")"
+    log_info "notify: dispatching → [$_via_str]"
+  fi
+
   local any_ok=0
   local channel fn
   while IFS= read -r channel; do

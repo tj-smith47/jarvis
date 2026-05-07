@@ -82,12 +82,20 @@ day_end="$(native_day_boundary "$day_start" +1d)"
 #   - exit 0 + NDJSON rows when populated
 #   - exit 0 + empty stdout when configured but empty (e.g. cache-miss provider="none")
 #   - exit 1 when tool/config missing — treated as "hide section" by `|| true`
+#
+# `--verbose` lets stderr through so failure modes (gh auth required, ICS
+# fetch failed, jira not authenticated) are visible without dropping into
+# `jarvis doctor --integrations-live`.
+verbose="${CLIFT_FLAGS[verbose]:-}"
+_silence() {
+  if [[ "$verbose" == "true" ]]; then "$@"; else "$@" 2>/dev/null; fi
+}
 calendar=""; prs=""; jira_rows=""; deploys=""; oncall=""
-[[ "$skip_cal"  != "true" ]] && calendar="$(calendar_events "$day_start" "$day_end" "$profile" 2>/dev/null || true)"
-[[ "$skip_prs"  != "true" ]] && prs="$(gh_prs_review_requested "$profile" 2>/dev/null || true)"
-[[ "$skip_jira" != "true" ]] && jira_rows="$(jira_in_flight "$profile" 2>/dev/null || true)"
-[[ "$skip_dep"  != "true" ]] && deploys="$(deploys_recent "$day_start" "$profile" 2>/dev/null || true)"
-oncall="$(oncall_show "$profile" 2>/dev/null || true)"
+[[ "$skip_cal"  != "true" ]] && calendar="$(_silence calendar_events "$day_start" "$day_end" "$profile" || true)"
+[[ "$skip_prs"  != "true" ]] && prs="$(_silence gh_prs_review_requested "$profile" || true)"
+[[ "$skip_jira" != "true" ]] && jira_rows="$(_silence jira_in_flight "$profile" || true)"
+[[ "$skip_dep"  != "true" ]] && deploys="$(_silence deploys_recent "$day_start" "$profile" || true)"
+oncall="$(_silence oncall_show "$profile" || true)"
 
 # Count NDJSON rows (one JSON per line). Empty input -> 0.
 _count() {

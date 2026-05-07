@@ -34,7 +34,8 @@ if ! declare -p CLIFT_FLAGS >/dev/null 2>&1; then
       {"name":"repeat","type":"string"},
       {"name":"until","type":"string"},
       {"name":"count","type":"string"},
-      {"name":"via","type":"string","default":"local"}]' \
+      {"name":"via","type":"string","default":"local"},
+      {"name":"dry-run","type":"bool"}]' \
     "$@"
 fi
 
@@ -45,6 +46,7 @@ repeat_="${CLIFT_FLAGS[repeat]:-}"
 until_="${CLIFT_FLAGS[until]:-}"
 count_="${CLIFT_FLAGS[count]:-}"
 via_csv="${CLIFT_FLAGS[via]:-local}"
+dry_run="${CLIFT_FLAGS[dry-run]:-}"
 
 if [[ -z "$message" ]]; then
   clift_exit 2 'usage: jarvis remind "<message>" (--in DUR | --at TIME) [--repeat ...] [--via CSV]'
@@ -180,6 +182,11 @@ payload="$(jq -nc \
     until: (if $until_at == "" then null else $until_at end),
     count_remaining: (if $count == "" then null else ($count|tonumber) end),
     created_at:$created_at, fire_count:0, last_fired_at:null}')"
+
+if [[ "$dry_run" == "true" ]]; then
+  log_info "(dry-run) would schedule: $slug @ $trigger_at via [$via_csv]"
+  exit 0
+fi
 
 remind_schema_create "$slug" "$payload"
 

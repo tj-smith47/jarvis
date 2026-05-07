@@ -22,13 +22,11 @@ _jira_base_url() {
 
 _jira_me() {
   command -v jira >/dev/null 2>&1 || return 1
-  # `jira me` prints the auth-required hint to stderr on a fresh machine —
-  # callers (jira_in_flight, jira_my_comments_since) treat exit 1 as "not
-  # configured" and skip the section, so the auth hint becomes redundant
-  # noise. doctor --integrations-live invokes jira_in_flight directly and
-  # routes through this same path; the auth error there is visible because
-  # jira's nonzero exit propagates and the live-probe handler reports it.
-  jira me 2>/dev/null
+  # Let `jira me`'s stderr through so the auth-required hint is visible to
+  # `jarvis doctor --integrations-live` and to brief/standup --verbose. Hot
+  # paths (brief / standup / status) silence stderr at the call site via
+  # _silence(); doctor lets it bubble.
+  jira me
 }
 
 _jira_emit_ndjson() {

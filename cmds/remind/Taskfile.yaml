@@ -46,6 +46,8 @@ tasks:
            pattern: "^[0-9]+$"}
         - {name: via, type: string, default: "local",
            desc: "Comma-separated channels (local,gotify,slack)"}
+        - {name: dry-run, type: bool,
+           desc: "Print what would be scheduled and exit without writing"}
     cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
 
   cancel:
