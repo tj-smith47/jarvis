@@ -4,6 +4,10 @@ Daily driver for notes, tasks, focus sessions, reminders, standup drafts, and ca
 integration. Built on [clift](https://github.com/tj-smith47/clift), the Task-based CLI
 framework.
 
+## Demo
+
+![morning brief — calendar, PRs, deploys, oncall](.vhs/gifs/jarvis-brief.gif)
+
 ## What it is
 
 jarvis is a shell CLI for personal productivity. It manages focus sessions, note capture,
@@ -53,6 +57,22 @@ jarvis --help
 | `standup` | Standup draft — yesterday + today + blockers |
 | `status` | Status dashboard — tasks, reminders, focus, jira |
 | `task` | Add a new task |
+
+## Recordings
+
+Each command has a tape in [`.vhs/`](.vhs/) — re-render with `VHS_NO_SANDBOX=true vhs .vhs/<name>.tape`.
+
+| | |
+|---|---|
+| **brief** — morning rollup | ![brief](.vhs/gifs/jarvis-brief.gif) |
+| **coffee** — themed brew | ![coffee](.vhs/gifs/jarvis-coffee.gif) |
+| **doctor** — health check | ![doctor](.vhs/gifs/jarvis-doctor.gif) |
+| **focus** — pomodoro + stats | ![focus](.vhs/gifs/jarvis-focus.gif) |
+| **note** — folder-tree notes | ![note](.vhs/gifs/jarvis-note.gif) |
+| **remind** — schedule + list | ![remind](.vhs/gifs/jarvis-remind.gif) |
+| **standup** — yesterday/today/blockers | ![standup](.vhs/gifs/jarvis-standup.gif) |
+| **status** — dashboard + JSON | ![status](.vhs/gifs/jarvis-status.gif) |
+| **task** — add/list/done | ![task](.vhs/gifs/jarvis-task.gif) |
 
 ## Profiles
 
