@@ -1,6 +1,9 @@
-# jarvis standup — Yesterday/Today/Blockers from real data: git log + open
-# tasks + tagged blocker notes. `--join` opens the next standup meeting URL.
-# Run standalone: VHS_NO_SANDBOX=true vhs .vhs/standup.tape
+# Story: standup draft from real data. Yesterday's git log + jira comments,
+# today's open tasks + jira "In Progress" rows, tagged blocker notes.
+# `--join` opens the next standup meeting URL from calendar.
+#
+# Run via the hermetic recorder: scripts/record-demos.sh standup
+# (gh/jira/gcalcli are shimmed; JARVIS_HOME is seeded with config.toml.)
 
 Output ".vhs/gifs/jarvis-standup.gif"
 
@@ -11,15 +14,13 @@ Set Height 800
 Set Padding 20
 Set TypingSpeed 50ms
 
+# Seed today's "in flight" with two open tasks. The standup demo is
+# read-only — yesterday's git log section is empty (no real repo here)
+# but jira_today + open_tasks fill the Today column.
 Hide
-Type "export HOME=$(mktemp -d) PATH=/opt/repos/jarvis/bin:$PATH PS1='$ '"
+Type "jarvis task add 'Wire up jarvis demos' --priority high --profile demo >/dev/null"
 Enter
-Sleep 200ms
-# Seed today's "in flight" with a couple of open tasks.
-Type "jarvis task add 'Wire up jarvis' --priority high >/dev/null"
-Enter
-Sleep 200ms
-Type "jarvis task add 'Audit flock paths' --priority med >/dev/null"
+Type "jarvis task add 'Audit flock paths' --priority med --profile demo >/dev/null"
 Enter
 Sleep 200ms
 Type "clear"
@@ -27,13 +28,12 @@ Enter
 Sleep 100ms
 Show
 
-# Default --since 1d window: yesterday's git activity, today's open tasks,
-# tagged blocker notes if any.
-Type "jarvis standup --since 1d"
+# Default --since 1d window: yesterday + today, jira pulled via shim.
+Type "jarvis standup --since 1d --profile demo"
 Enter
 Sleep 4s
 
-# Custom window — past 4 hours.
-Type "clear && jarvis standup --since 4h"
+# Tighter window — past 4 hours.
+Type "clear && jarvis standup --since 4h --profile demo"
 Enter
 Sleep 3s

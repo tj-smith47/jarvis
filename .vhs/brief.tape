@@ -1,6 +1,11 @@
-# jarvis brief — morning concierge rollup. Date, oncall, tasks, reminders,
-# calendar, PRs, deploys — all in one themed render.
-# Run standalone: VHS_NO_SANDBOX=true vhs .vhs/brief.tape
+# Story: morning rollup. Calendar / PRs / Jira / Deploys / Oncall in one
+# themed render — and crucially, every PR row shows <owner>/<repo>#<num>
+# so a multi-repo reviewer can tell which PR they're being asked about.
+#
+# Run via the hermetic recorder:
+#   scripts/record-demos.sh brief
+# (The recorder seeds JARVIS_HOME/demo with config.toml + cal.ics + deploys.log
+# and shims gh/jira/gcalcli on PATH. HOME is also redirected to a tempdir.)
 
 Output ".vhs/gifs/jarvis-brief.gif"
 
@@ -11,15 +16,11 @@ Set Height 700
 Set Padding 20
 Set TypingSpeed 50ms
 
-# --- Isolated demo HOME (no real-FS leak) ---
+# Seed a couple of tasks so the dashboard isn't empty.
 Hide
-Type "export HOME=$(mktemp -d) PATH=/opt/repos/jarvis/bin:$PATH PS1='$ '"
+Type "jarvis task add 'Wire jarvis demos' --priority high --profile demo >/dev/null"
 Enter
-Sleep 300ms
-Type "jarvis task add 'Wire jarvis' --priority high >/dev/null"
-Enter
-Sleep 200ms
-Type "jarvis task add 'Audit flock paths' --priority med >/dev/null"
+Type "jarvis task add 'Audit flock paths' --priority med --profile demo >/dev/null"
 Enter
 Sleep 200ms
 Type "clear"
@@ -27,12 +28,12 @@ Enter
 Sleep 100ms
 Show
 
-# Pretty render — sections, bold headers, themed counts.
-Type "jarvis brief"
+# Pretty render — Calendar, PRs (with repo!), Jira, Deploys (with HH:MM), Oncall.
+Type "jarvis brief --profile demo"
 Enter
 Sleep 4s
 
-# Compact mode — single-line oncall + counts, terminal-friendly.
-Type "clear && jarvis brief --short"
+# Compact one-liner — counts + oncall.
+Type "clear && jarvis brief --short --profile demo"
 Enter
 Sleep 3s

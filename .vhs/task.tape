@@ -1,6 +1,7 @@
-# jarvis task — CRUD over per-slug JSON files. Add, list, done, in three lines.
+# Story: CRUD over per-slug JSON files. Add / list / done in three lines.
 # Slug auto-generated from description; collision suffixes on repeat.
-# Run standalone: VHS_NO_SANDBOX=true vhs .vhs/task.tape
+#
+# Run via the hermetic recorder: scripts/record-demos.sh task
 
 Output ".vhs/gifs/jarvis-task.gif"
 
@@ -12,34 +13,31 @@ Set Padding 20
 Set TypingSpeed 50ms
 
 Hide
-Type "export HOME=$(mktemp -d) PATH=/opt/repos/jarvis/bin:$PATH PS1='$ '"
-Enter
-Sleep 200ms
 Type "clear"
 Enter
 Sleep 100ms
 Show
 
 # Add a few tasks — slug echoed on stdout for piping.
-Type "jarvis task add 'Wire up jarvis' --priority high --due today"
+Type "jarvis task add 'Wire up jarvis demos' --priority high --due today --profile demo"
 Enter
 Sleep 1s
-Type "jarvis task add 'Audit flock paths' --priority med --project release"
+Type "jarvis task add 'Audit flock paths' --priority med --project release --profile demo"
 Enter
 Sleep 1s
-Type "jarvis task add 'Ship VHS demos' --priority low"
+Type "jarvis task add 'Ship VHS demos' --priority low --profile demo"
 Enter
 Sleep 1s
 
 # List with priority colors + columns.
-Type "clear && jarvis task list"
+Type "clear && jarvis task list --profile demo"
 Enter
 Sleep 3s
 
 # Mark one done; it drops out of the default open-only listing.
-Type "jarvis task done wire-up-jarvis"
+Type "jarvis task done wire-up-jarvis-demos --profile demo"
 Enter
 Sleep 1s
-Type "jarvis task list --all"
+Type "jarvis task list --all --profile demo"
 Enter
 Sleep 3s
