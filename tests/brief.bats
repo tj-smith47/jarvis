@@ -133,3 +133,37 @@ EOF
   bash "${JARVIS_DIR}/cmds/brief/brief.sh" --profile test > /dev/null
   [ -f "$JARVIS_HOME/test/cache/calendar.json" ]
 }
+
+@test "PR rows surface draft + CI + age + review-decision when gh provides them" {
+  shim_install gh '
+case "$1" in
+  pr) cat <<EOF2
+[
+  {"number":42,"title":"feat: ready for review","url":"https://github.com/o/r/pull/42",
+   "headRepository":{"name":"r","owner":{"login":"o"}},
+   "isDraft":false,"updatedAt":"2026-05-01T13:00:00Z",
+   "statusCheckRollup":[{"conclusion":"SUCCESS"},{"conclusion":"SUCCESS"}],
+   "reviewDecision":"APPROVED"},
+  {"number":43,"title":"wip: not yet","url":"https://github.com/o/r/pull/43",
+   "headRepository":{"name":"r","owner":{"login":"o"}},
+   "isDraft":true,"updatedAt":"2026-05-01T14:30:00Z",
+   "statusCheckRollup":[{"status":"IN_PROGRESS"}],
+   "reviewDecision":null},
+  {"number":44,"title":"hotfix","url":"https://github.com/o/r/pull/44",
+   "headRepository":{"name":"r","owner":{"login":"o"}},
+   "isDraft":false,"updatedAt":"2026-05-01T08:00:00Z",
+   "statusCheckRollup":[{"conclusion":"FAILURE"}],
+   "reviewDecision":"CHANGES_REQUESTED"}
+]
+EOF2
+   exit 0 ;;
+esac'
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --profile test
+  [ "$status" -eq 0 ]
+  # Row 1: ready, approved, CI clean — JARVIS_FAKE_NOW is 15:00 so 2h since 13:00.
+  [[ "$output" == *"o/r#42"*"feat: ready for review"*"2h"*"✓CI"*"approved"* ]]
+  # Row 2: draft, CI pending — DRAFT prefix, ⏳CI marker
+  [[ "$output" == *"[DRAFT]"*"o/r#43"*"⏳CI"* ]]
+  # Row 3: changes-requested, CI failing
+  [[ "$output" == *"o/r#44"*"✗CI"*"changes-requested"* ]]
+}

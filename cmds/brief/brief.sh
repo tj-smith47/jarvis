@@ -159,8 +159,36 @@ if [[ -n "$calendar" ]]; then
 fi
 
 if [[ -n "$prs" ]]; then
+  # Each row carries the signals that change how a reviewer reads it:
+  # draft marker (don't review yet), CI rollup (red is unreviewable, pending
+  # blocks merge), age (stale signal), reviewDecision (already approved or
+  # changes-requested by someone). The bare repo#num+title from before
+  # buried all four — the audit's canonical example of "captured but
+  # invisible". `now_iso` honors JARVIS_FAKE_NOW so age is deterministic
+  # under tests.
   printf '  \033[1mPRs awaiting your review\033[0m\n'
-  printf '%s\n' "$prs" | jq -r '"    " + .repo + "#" + (.number|tostring) + "  " + .title'
+  printf '%s\n' "$prs" | jq -r --arg now "$now_iso" '
+    def age_str:
+      if (.updatedAt // "") != "" and ($now // "") != "" then
+        (($now    | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) -
+         (.updatedAt | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) as $secs
+        | if $secs < 3600    then "  \($secs / 60 | floor)m"
+          elif $secs < 86400  then "  \($secs / 3600 | floor)h"
+          elif $secs < 604800 then "  \($secs / 86400 | floor)d"
+          else "  \($secs / 604800 | floor)w" end
+      else "" end;
+    def ci_str:
+      if .ci == "success"  then "  ✓CI"
+      elif .ci == "failure" then "  ✗CI"
+      elif .ci == "pending" then "  ⏳CI"
+      else "" end;
+    def decision_str:
+      if .reviewDecision == "APPROVED"          then "  approved"
+      elif .reviewDecision == "CHANGES_REQUESTED" then "  changes-requested"
+      else "" end;
+    (if .isDraft then "    [DRAFT] " else "    " end) +
+    .repo + "#" + (.number|tostring) + "  " + .title +
+    age_str + ci_str + decision_str'
   printf '\n'
 fi
 

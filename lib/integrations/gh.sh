@@ -25,12 +25,35 @@ _gh_run() {
   local out
   # Don't suppress gh's stderr — its diagnostic ("auth required", "API rate
   # limit", …) is what `jarvis doctor` and direct invocation surface.
-  if ! out="$(gh pr list --search "$search" --json number,title,url,headRepository)"; then
+  #
+  # JSON projection includes signals that change how a reviewer reads the
+  # row: isDraft (don't review-yet), CI rollup (red is unreviewable, pending
+  # blocks merge), updatedAt (stale signal), reviewDecision (someone else
+  # already approved / changes-requested). These are queryable in one round
+  # trip; rendering is the consumer's call.
+  if ! out="$(gh pr list --search "$search" \
+                --json number,title,url,headRepository,isDraft,updatedAt,statusCheckRollup,reviewDecision)"; then
     return 1
   fi
-  # `gh` already emits a JSON array; jq does the projection. Empty array
-  # produces no output (jq's `.[]` is a no-op on []).
-  printf '%s' "$out" | jq -c '.[] | {number, title, url, repo: (.headRepository.owner.login + "/" + .headRepository.name)}'
+  # CI rollup: gh's statusCheckRollup is an array of check objects, each
+  # with a `conclusion` (completed) or `status` (in-flight) field. Roll up
+  # to a single token here so consumers don't need to know the schema.
+  printf '%s' "$out" | jq -c '.[] | {
+    number, title, url,
+    repo: (.headRepository.owner.login + "/" + .headRepository.name),
+    isDraft,
+    updatedAt,
+    reviewDecision,
+    ci: (
+      (.statusCheckRollup // [])
+      | if length == 0 then "none"
+        elif all(.[]; (.conclusion // .status) == "SUCCESS") then "success"
+        elif any(.[]; (.conclusion // .status)
+                      | IN("FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"))
+          then "failure"
+        else "pending" end
+    )
+  }'
 }
 
 gh_prs_review_requested() {
