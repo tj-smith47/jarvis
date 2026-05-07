@@ -18,8 +18,17 @@ if [[ -n "${_JARVIS_NOTE_STORE_LOADED:-}" ]]; then
 fi
 _JARVIS_NOTE_STORE_LOADED=1
 
+# Source lib/native/clock.sh for native_now_iso so note timestamps honor
+# JARVIS_FAKE_NOW the same way focus/log.sh and remind do. Source is
+# idempotent via the loaded-guard idiom.
+# shellcheck disable=SC1090
+_note_store_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=/dev/null
+source "${_note_store_dir}/native/clock.sh"
+unset _note_store_dir
+
 note_now_iso() {
-  date -u +%Y-%m-%dT%H:%M:%SZ
+  native_now_iso
 }
 
 # _note_store_parse_flags <args...>

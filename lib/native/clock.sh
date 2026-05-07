@@ -41,7 +41,8 @@ _JARVIS_NATIVE_CLOCK_LOADED=1
 _native_when_bin() {
   local cli_dir="${CLI_DIR:-}"
   if [[ -z "$cli_dir" ]]; then
-    cli_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    # BASH_SOURCE is lib/native/clock.sh; repo root is two levels up.
+    cli_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
   fi
   printf '%s/bin/jarvis-when\n' "$cli_dir"
 }
