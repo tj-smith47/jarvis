@@ -135,8 +135,15 @@ fi
 printf '\n'
 
 if [[ -n "$calendar" ]]; then
+  # Calendar provider NDJSON shape is {start,end,title,url}. Until this fix
+  # the renderer dropped .url silently — every meeting joined elsewhere
+  # (lib/calendar/meeting_url.sh) but the brief itself surfaced no link.
   printf '  \033[1mCalendar\033[0m\n'
-  printf '%s\n' "$calendar" | jq -r '"    " + (.start | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) + "  " + .title'
+  printf '%s\n' "$calendar" | jq -r '
+    "    " +
+    (.start | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
+    "  " + .title +
+    (if (.url // "") != "" then "  [2m" + .url + "[0m" else "" end)'
   printf '\n'
 fi
 

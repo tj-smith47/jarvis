@@ -16,9 +16,13 @@ vars:
     - {name: no-color, type: bool, desc: "Disable color output"}
     - {name: version, short: V, type: bool, desc: "Show version"}
   # Persistent flags — accepted either before or after the command token.
+  # `profile` is intentionally unconstrained: a platform engineer juggles
+  # contexts (work / home / oncall / opensource / experiment / …). The
+  # `default` fallback in lib/state/profile.sh is also a real value;
+  # restricting choices conflicts with that fallback and forces user
+  # workarounds (rename / fork) for additional contexts.
   PERSISTENT_FLAGS:
-    - {name: profile, short: p, type: string, default: work, desc: "Profile: work or home",
-       choices: [work, home]}
+    - {name: profile, short: p, type: string, default: work, desc: "Profile name (e.g. work, home, oncall, default)"}
 
 includes:
   _help:

@@ -78,9 +78,10 @@ Each command has a tape in [`.vhs/`](.vhs/) — re-render with `VHS_NO_SANDBOX=t
 ## Profiles
 
 jarvis is profile-aware. Pass `--profile <name>` (or `-p <name>`) before or after any
-command; the flag is persistent so it applies across the whole invocation. Two built-in
-profiles: `work` (default) and `home`. State directories, calendar sources, Slack
-webhooks, and standup repo lists are all per-profile.
+command; the flag is persistent so it applies across the whole invocation. Profile names
+are unconstrained — `work` is the default seed, but you can name profiles whatever fits
+your contexts (`home`, `oncall`, `opensource`, `clientx`, …). State directories, calendar
+sources, Slack webhooks, and standup repo lists are all per-profile.
 
 ```bash
 jarvis --profile home status
