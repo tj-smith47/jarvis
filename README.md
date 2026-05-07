@@ -37,7 +37,8 @@ cd "$HOME/.jarvis"
 # 3. Build native helpers:
 task build
 
-# 4. Bootstrap the CLI (writes bin/jarvis wrapper + .env):
+# 4. Bootstrap the CLI (writes bin/jarvis wrapper + .env for *this* machine —
+#    the committed .env is a template that points at relative dev paths):
 task setup:cli
 
 export PATH="$HOME/.jarvis/bin:$PATH"

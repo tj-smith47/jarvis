@@ -103,8 +103,13 @@ fi
 printf '%-15s %-20s %s\n' "profile" "${JARVIS_PROFILE:-default}" "state at $state_dir"
 
 if [[ -f "$state_dir/state.version" ]]; then
-  schema="v$(< "$state_dir/state.version")"
-  printf '%-15s %-20s %s\n' "state schema" "$schema" "up to date"
+  schema_raw="$(< "$state_dir/state.version")"
+  if [[ "$schema_raw" =~ ^[0-9]+$ ]]; then
+    printf '%-15s %-20s %s\n' "state schema" "v$schema_raw" "up to date"
+  else
+    printf '⚠ %-13s %-20s %s\n' "state schema" "corrupt" \
+      "state.version is not a number — delete and re-run any jarvis command"
+  fi
 else
   printf '%-15s %-20s %s\n' "state schema" "uninitialized" "run any jarvis command once to initialize"
 fi
@@ -117,7 +122,7 @@ probe_version() {
   esac
 }
 
-for bin in jq dasel rg glow; do
+for bin in jq dasel rg glow task curl git; do
   if command -v "$bin" >/dev/null 2>&1; then
     ver="$(probe_version "$bin" || true)"
     printf '\u2713 %-13s %-20s %s\n' "$bin" "$ver" "available"
@@ -427,7 +432,7 @@ if [[ -f "$focus_log" ]]; then
     printf '\u2713 %-13s %-20s %s\n' "focus.log" "0 orphan rows" "clean"
   else
     printf '\u26a0 %-13s %-20s %s\n' "focus.log" "$orphan_count orphan rows" \
-      "SIGKILL or power loss left starts unmatched (cleanup TBD)"
+      "run \`jarvis doctor --reap-focus-orphans\` to synthesize end rows"
   fi
 else
   printf '\u2713 %-13s %-20s %s\n' "focus.log" "no log yet" "no focus sessions recorded"
