@@ -112,7 +112,33 @@ repos = ["owner/repo-a", "owner/repo-b"]
 
 [scheduler]
 backend = "cron"          # cron | systemd
+
+[oncall]
+primary   = "alex"
+secondary = "you"
+pager     = "+1555..."
+until     = "2026-05-09"  # optional rotation expiry; surfaced in `brief`
 ```
+
+**`~/.jarvis-state/<profile>/deploys.log`** — append-only TSV of recent
+deploys. `brief` and `standup` read this; nothing in jarvis writes to it.
+Pipe your CI/deployment system's output here, or append manually:
+
+```
+<ts>\t<service>\t<version>\t<status>
+2026-05-07T08:14:00Z	api	v3.2.1	ok
+2026-05-07T07:51:00Z	shelly	v0.4.0	ok
+2026-05-06T22:14:00Z	api	v3.2.0	rolled-back
+```
+
+`<ts>` must be UTC ISO-8601. `<status>` is free-form; common values are
+`ok`, `failed`, `rolled-back`. Lines beginning with `#` are ignored.
+
+**`~/.jarvis-state/<profile>/notify.log`** — channel-attempt audit trail
+written by every `notify_dispatch` call. NDJSON, one row per attempt
+(`{ts, channel, ok, message[, error]}`). Mode `0600` because message
+bodies can carry secrets/PII. Today this is read-only outside of
+`status` and `standup` aggregations; not meant for user editing.
 
 ## Architecture
 

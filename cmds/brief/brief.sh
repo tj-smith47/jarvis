@@ -271,7 +271,10 @@ fi
 
 if [[ -n "$oncall" ]]; then
   printf '  \033[1mOncall\033[0m\n'
-  printf '%s\n' "$oncall" | jq -r '"    " + .role + ":  " + .who + (if .pager then "  (pager: " + .pager + ")" else "" end)'
+  printf '%s\n' "$oncall" | jq -r '
+    "    " + .role + ":  " + .who +
+    (if .pager then "  (pager: \(.pager))" else "" end) +
+    (if .until then "  (until \(.until))" else "" end)'
   printf '\n'
 fi
 

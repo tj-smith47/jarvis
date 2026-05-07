@@ -50,3 +50,26 @@ EOF
   [ "$status" -eq 0 ]
   [ "$(printf '%s\n' "$output" | wc -l)" -eq 1 ]
 }
+
+@test "[oncall] until is surfaced on every emitted row when set" {
+  cat > "$JARVIS_HOME/test/config.toml" <<EOF
+[oncall]
+primary   = "alex"
+secondary = "you"
+until     = "2026-05-09"
+EOF
+  run oncall_show test
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | head -1 | jq -e '.until == "2026-05-09"' > /dev/null
+  printf '%s\n' "$output" | sed -n 2p | jq -e '.until == "2026-05-09"' > /dev/null
+}
+
+@test "until omitted when not in config (no key emitted)" {
+  cat > "$JARVIS_HOME/test/config.toml" <<EOF
+[oncall]
+primary = "alex"
+EOF
+  run oncall_show test
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | jq -e 'has("until") | not' > /dev/null
+}
