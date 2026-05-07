@@ -134,6 +134,39 @@ EOF
   [ -f "$JARVIS_HOME/test/cache/calendar.json" ]
 }
 
+@test "Reminders firing later today are surfaced in brief" {
+  # Reminders are pre-fix invisible to brief — they live in <profile>/reminders/*.json
+  # and only the `status` dashboard read them. The most "what's hitting me today"
+  # signal jarvis owns must show in the "what's hitting me today" command.
+  mkdir -p "$JARVIS_HOME/test/reminders"
+  jq -nc --arg ts "2026-05-01T16:00:00Z" \
+    '{slug:"call-mom",message:"call mom",status:"pending",
+      trigger_at:$ts, via:["local"], repeat:"", anchor_at:"", until:"",
+      count_remaining:null, created_at:"2026-05-01T08:00:00Z",
+      fire_count:0, last_fired_at:""}' \
+    > "$JARVIS_HOME/test/reminders/call-mom.json"
+  jq -nc --arg ts "2026-05-01T18:30:00Z" \
+    '{slug:"meds",message:"take meds",status:"active",
+      trigger_at:$ts, via:["local"], repeat:"daily", anchor_at:"18:30",
+      until:"", count_remaining:null,
+      created_at:"2026-04-01T08:00:00Z",
+      fire_count:30, last_fired_at:"2026-04-30T18:30:00Z"}' \
+    > "$JARVIS_HOME/test/reminders/meds.json"
+  # Past reminder (already fired earlier today) should NOT show:
+  jq -nc --arg ts "2026-05-01T08:00:00Z" \
+    '{slug:"morning",message:"already-fired",status:"pending",
+      trigger_at:$ts, via:["local"], repeat:"", anchor_at:"", until:"",
+      count_remaining:null, created_at:"2026-05-01T07:00:00Z",
+      fire_count:0, last_fired_at:""}' \
+    > "$JARVIS_HOME/test/reminders/morning.json"
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Reminders today"* ]]
+  [[ "$output" == *"16:00"*"call mom"* ]]
+  [[ "$output" == *"18:30"*"take meds"*"every daily"* ]]
+  [[ "$output" != *"already-fired"* ]]
+}
+
 @test "PR rows surface draft + CI + age + review-decision when gh provides them" {
   shim_install gh '
 case "$1" in

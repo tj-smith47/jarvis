@@ -157,6 +157,54 @@ EOF
   [[ "$output" != *"resolved blocker"* ]]
 }
 
+@test "today's meetings render as their own section after Today" {
+  # Pre-fix, standup never showed today's calendar — a standup draft that
+  # doesn't surface "I have a 1:1 at 14:00" is missing half the picture.
+  cat > "$JARVIS_HOME/test/cal.ics" <<'ICS'
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART:20260501T160000Z
+DTEND:20260501T163000Z
+SUMMARY:1:1 with manager
+URL:https://meet.google.com/team-sync
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260501T180000Z
+DTEND:20260501T190000Z
+SUMMARY:platform sync
+URL:https://zoom.us/j/55555
+END:VEVENT
+END:VCALENDAR
+ICS
+  cat >> "$JARVIS_HOME/test/config.toml" <<EOF
+
+[calendar]
+provider = "ics"
+
+[calendar.ics]
+source = "$JARVIS_HOME/test/cal.ics"
+EOF
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Meetings"* ]]
+  [[ "$output" == *"16:00"*"1:1 with manager"*"https://meet.google.com/team-sync"* ]]
+  [[ "$output" == *"18:00"*"platform sync"* ]]
+}
+
+@test "today's reminders render as their own section after Meetings" {
+  mkdir -p "$JARVIS_HOME/test/reminders"
+  jq -nc --arg ts "2026-05-01T17:00:00Z" \
+    '{slug:"call-vendor",message:"call vendor",status:"pending",
+      trigger_at:$ts, via:["local"], repeat:"", anchor_at:"", until:"",
+      count_remaining:null, created_at:"2026-05-01T08:00:00Z",
+      fire_count:0, last_fired_at:""}' \
+    > "$JARVIS_HOME/test/reminders/call-vendor.json"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Reminders"* ]]
+  [[ "$output" == *"17:00"*"call vendor"* ]]
+}
+
 @test "blockers: row carries age suffix and body excerpt" {
   cat > "$JARVIS_HOME/test/notes/index.json" <<EOF
 {"version":1,"notes":[

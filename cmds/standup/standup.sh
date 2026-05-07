@@ -219,6 +219,35 @@ fi
 # ----------------------------------------------------------- today: jira
 jira_today="$(_silence jira_in_flight "$profile" || true)"
 
+# ----------------------------------------------------------- today: meetings
+# Standup pre-fix listed open tasks + jira-in-flight under "Today" but
+# DROPPED today's calendar entirely — a standup draft that doesn't
+# mention "I have a 1:1 at 14:00" is missing half the picture. Window is
+# [now, end-of-today) — we don't want to dwell on a 9am that already
+# happened by the time the user's reading.
+day_start_iso="$(native_day_start "$now_iso")"
+day_end_iso="$(native_day_boundary "$day_start_iso" +1d)"
+meetings_today="$(_silence calendar_events "$now_iso" "$day_end_iso" "$profile" || true)"
+
+# ----------------------------------------------------------- today: reminders
+# Same gap as brief — `<profile>/reminders/*.json` was never read by
+# standup despite being the canonical source of "things firing today".
+reminders_today=""
+if [[ -d "$profile_dir/reminders" ]]; then
+  shopt -s nullglob
+  _rem_files=( "$profile_dir/reminders"/*.json )
+  shopt -u nullglob
+  if (( ${#_rem_files[@]} > 0 )); then
+    reminders_today="$(jq -cs --arg now "$now_iso" --arg end "$day_end_iso" '
+      [ .[]
+        | select((.status // "pending") == "pending" or (.status // "") == "active")
+        | select(.trigger_at >= $now and .trigger_at < $end) ]
+      | sort_by(.trigger_at)
+      | .[]
+    ' "${_rem_files[@]}" 2>/dev/null || true)"
+  fi
+fi
+
 # ----------------------------------------------------------- blockers
 # Pre-fix the blocker scan was filtered by `updated_at >= since_iso`, which
 # meant a blocker that had been real for 5 days but received no recent edit
@@ -383,6 +412,26 @@ if [[ -n "$jira_today" ]]; then
 fi
 (( had_today == 0 )) && printf '    (none)\n'
 printf '\n'
+
+if [[ -n "$meetings_today" ]]; then
+  printf '  \033[1mMeetings\033[0m\n'
+  printf '%s\n' "$meetings_today" | jq -r '
+    "    " +
+    (.start | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
+    "  " + .title +
+    (if (.url // "") != "" then "  " + .url else "" end)'
+  printf '\n'
+fi
+
+if [[ -n "$reminders_today" ]]; then
+  printf '  \033[1mReminders\033[0m\n'
+  printf '%s\n' "$reminders_today" | jq -r '
+    "    " +
+    (.trigger_at | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
+    "  " + (.message // .slug // "(no message)") +
+    (if (.repeat // "") != "" and .repeat != "once" then "  (every \(.repeat))" else "" end)'
+  printf '\n'
+fi
 
 printf '  \033[1mBlockers\033[0m\n'
 if [[ -n "$blockers" ]]; then

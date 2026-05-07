@@ -45,8 +45,9 @@ skip_dep="${CLIFT_FLAGS[skip-deploys]:-}"
 source "${CLI_DIR}/lib/state/profile.sh"
 # state_profile_dir resolves the precedence chain (CLIFT_FLAGS[profile] >
 # CLIFT_FLAG_PROFILE env > JARVIS_PROFILE > default) and exports
-# JARVIS_PROFILE so downstream libs see the resolved value.
-state_profile_dir >/dev/null
+# JARVIS_PROFILE so downstream libs see the resolved value. Profile dir
+# is also captured for direct file reads (reminders/, etc).
+profile_dir="$(state_profile_dir)"
 profile="$JARVIS_PROFILE"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/config.sh"
@@ -90,12 +91,31 @@ verbose="${CLIFT_FLAGS[verbose]:-}"
 _silence() {
   if [[ "$verbose" == "true" ]]; then "$@"; else "$@" 2>/dev/null; fi
 }
-calendar=""; prs=""; jira_rows=""; deploys=""; oncall=""
+calendar=""; prs=""; jira_rows=""; deploys=""; oncall=""; reminders=""
 [[ "$skip_cal"  != "true" ]] && calendar="$(_silence calendar_events "$day_start" "$day_end" "$profile" || true)"
 [[ "$skip_prs"  != "true" ]] && prs="$(_silence gh_prs_review_requested "$profile" || true)"
 [[ "$skip_jira" != "true" ]] && jira_rows="$(_silence jira_in_flight "$profile" || true)"
 [[ "$skip_dep"  != "true" ]] && deploys="$(_silence deploys_recent "$day_start" "$profile" || true)"
 oncall="$(_silence oncall_show "$profile" || true)"
+
+# Reminders firing later today. The data has always been in
+# <profile>/reminders/*.json — only `status` (the dashboard) consumed it
+# pre-fix, so the user reading their morning brief never saw "you have a
+# reminder firing at 14:00 today" even though the system had every byte.
+if [[ -d "$profile_dir/reminders" ]]; then
+  shopt -s nullglob
+  _rem_files=( "$profile_dir/reminders"/*.json )
+  shopt -u nullglob
+  if (( ${#_rem_files[@]} > 0 )); then
+    reminders="$(jq -cs --arg now "$now_iso" --arg end "$day_end" '
+      [ .[]
+        | select((.status // "pending") == "pending" or (.status // "") == "active")
+        | select(.trigger_at >= $now and .trigger_at < $end) ]
+      | sort_by(.trigger_at)
+      | .[]
+    ' "${_rem_files[@]}" 2>/dev/null || true)"
+  fi
+fi
 
 # Count NDJSON rows (one JSON per line). Empty input -> 0.
 _count() {
@@ -192,6 +212,16 @@ if [[ -n "$prs" ]]; then
   printf '\n'
 fi
 
+if [[ -n "$reminders" ]]; then
+  printf '  \033[1mReminders today\033[0m\n'
+  printf '%s\n' "$reminders" | jq -r '
+    "    " +
+    (.trigger_at | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
+    "  " + (.message // .slug // "(no message)") +
+    (if (.repeat // "") != "" and .repeat != "once" then "  (every \(.repeat))" else "" end)'
+  printf '\n'
+fi
+
 if [[ -n "$jira_rows" ]]; then
   printf '  \033[1mJira in flight\033[0m\n'
   printf '%s\n' "$jira_rows" | jq -r '"    " + .key + "  " + .summary'
@@ -213,7 +243,7 @@ fi
 # All-empty hint: if every section is gated off (no integrations configured /
 # no data), the user gets only the "Good morning" line. Surface a single hint
 # pointing at doctor so the silence is actionable.
-if [[ -z "$calendar" && -z "$prs" && -z "$jira_rows" && -z "$deploys" && -z "$oncall" ]]; then
+if [[ -z "$calendar" && -z "$prs" && -z "$jira_rows" && -z "$deploys" && -z "$oncall" && -z "$reminders" ]]; then
   if declare -F log_info >/dev/null 2>&1; then
     log_info "no integrations configured — run \`jarvis doctor\` for diagnostics"
   else
