@@ -24,10 +24,6 @@ note_kind_of() {
   printf '%s\n' "${1%%/*}"
 }
 
-note_slug_of() {
-  printf '%s\n' "${1#*/}"
-}
-
 _note_index_keys() {
   local idx
   idx="$(note_index_file)"

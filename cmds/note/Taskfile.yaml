@@ -34,7 +34,7 @@ tasks:
     vars:
       FLAGS:
         - {name: kind, type: string, default: inbox, desc: "Note kind",
-           choices: [inbox, meeting, ref, project, daily]}
+           choices: [inbox, meeting, ref, project, daily, postmortem]}
         - {name: tag, type: list, desc: "Tag (repeatable)"}
         - {name: no-edit, type: bool, desc: "Skip opening $EDITOR"}
     cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

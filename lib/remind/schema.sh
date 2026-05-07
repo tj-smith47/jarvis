@@ -87,6 +87,11 @@ remind_schema_create() {
   state_json_write "$target" "$payload"
 }
 
+# remind_schema_load — counterpart to remind_schema_save. Currently exercised
+# only by tests as the load half of a round-trip: save → load → assert
+# byte-equal. Kept in the lib so the round-trip property is maintained as
+# the schema evolves; if a future writer skews the on-disk format, the
+# load-side test is the canary.
 remind_schema_load() {
   local slug="$1" profile="${2:-}"
   local target

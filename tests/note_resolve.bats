@@ -82,11 +82,9 @@ EOF
   [ "$output" = "$NOTES/ref/etcd-restore-runbook.md" ]
 }
 
-@test "note_kind_of + note_slug_of split on first slash only" {
+@test "note_kind_of splits on first slash only" {
   run note_kind_of "projects/clift/perf-investigation"
   [ "$output" = "projects" ]
-  run note_slug_of "projects/clift/perf-investigation"
-  [ "$output" = "clift/perf-investigation" ]
 }
 
 @test "note_resolve: jira-key slug preserves upper-snake" {

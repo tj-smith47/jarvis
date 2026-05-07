@@ -36,7 +36,3 @@ _gh_run() {
 gh_prs_review_requested() {
   _gh_run 'is:open is:pr review-requested:@me' "${1:-}"
 }
-
-gh_prs_authored() {
-  _gh_run 'is:open is:pr author:@me' "${1:-}"
-}

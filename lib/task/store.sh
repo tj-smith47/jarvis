@@ -20,6 +20,12 @@ task_store_path() {
   printf '%s/%s.json\n' "$(task_store_dir)" "$1"
 }
 
+# task_store_exists / task_store_get — the read half of the put/get/exists
+# round-trip API. No production caller today (cmds use task_store_list +
+# state_json_mutate); kept in the lib so the round-trip tests
+# (task_store_put → task_store_get → assert byte-equal,
+# task_store_get on corrupt record exits with stderr) catch on-disk format
+# regressions before they ship.
 task_store_exists() {
   [[ -f "$(task_store_path "$1")" ]]
 }

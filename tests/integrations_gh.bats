@@ -36,16 +36,6 @@ exit 0'
   printf '%s\n' "$output" | head -1 | jq -e '.number == 482 and .repo == "org/repo"' > /dev/null
 }
 
-@test "gh authored -> NDJSON rows" {
-  shim_install gh 'cat <<EOF
-[{"number":500,"title":"chore: bump","url":"https://github.com/org/repo/pull/500","headRepository":{"name":"repo","owner":{"login":"org"}}}]
-EOF
-exit 0'
-  run gh_prs_authored
-  [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | wc -l)" -eq 1 ]
-}
-
 @test "gh nonzero exit -> exit 1 with stderr" {
   shim_install gh 'echo "auth required" >&2; exit 4'
   run --separate-stderr gh_prs_review_requested
