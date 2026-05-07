@@ -63,6 +63,8 @@ profile="$JARVIS_PROFILE"
 source "${CLI_DIR}/lib/state/config.sh"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/integrations/jira.sh"
+# shellcheck source=/dev/null
+source "${CLI_DIR}/lib/integrations/gh.sh"
 # Calendar stack (only needed by --join, but cheap and keeps a single source
 # block — providers register at source-time, so order matters: provider.sh
 # defines calendar_register; backends register themselves on source).
@@ -201,6 +203,13 @@ _silence() {
 
 # ----------------------------------------------------------- yesterday: jira
 jira_comments="$(_silence jira_my_comments_since "$since_iso" "$profile" || true)"
+
+# ----------------------------------------------------------- yesterday: merged PRs
+# Squash/rebase merges leave the local branch without a merge commit, so
+# `git log --author=@me` misses them. Pull merged-by-me PRs from gh too —
+# the user shipped that code yesterday whether or not it shows in their
+# local history.
+yesterday_merged_prs="$(_silence gh_prs_merged_since "$since_iso" "$profile" || true)"
 
 # ----------------------------------------------------------- yesterday: tasks closed
 # Tasks marked done in [since_iso, now_iso] never appeared in the yesterday
@@ -475,6 +484,12 @@ if [[ -n "$jira_comments" ]]; then
     (if (.summary // "") != "" then " " + .summary + " — " else " " end) +
     .body +
     (if (.url // "") != "" then "  " + .url else "" end)'
+  had_yesterday=1
+fi
+if [[ -n "$yesterday_merged_prs" ]]; then
+  # 🚀 distinguishes shipped PRs from in-progress git commits.
+  printf '%s\n' "$yesterday_merged_prs" | jq -r '
+    "    - 🚀 " + .repo + "#" + (.number|tostring) + "  " + .title'
   had_yesterday=1
 fi
 if [[ -n "$yesterday_tasks_done" ]]; then

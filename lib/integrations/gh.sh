@@ -59,3 +59,32 @@ _gh_run() {
 gh_prs_review_requested() {
   _gh_run 'is:open is:pr review-requested:@me' "${1:-}"
 }
+
+# Merged-by-me-since: PRs the current user authored that landed (state:merged)
+# in [since, now]. Used by standup yesterday to surface code that shipped
+# via "Squash and merge" / "Rebase and merge" — git log alone misses these
+# because the local branch never gets a merge commit.
+#   $1 — since (UTC ISO-8601)
+#   $2 — profile (unused; honored for registry contract)
+gh_prs_merged_since() {
+  local since="$1" _profile="${2:-}"
+  command -v gh >/dev/null 2>&1 || return 1
+  # gh's `merged:>=<date>` accepts YYYY-MM-DD; trim the time portion.
+  local since_date="${since%%T*}"
+  local out
+  if ! out="$(gh pr list \
+                --search "is:pr is:merged author:@me merged:>=${since_date}" \
+                --json number,title,url,headRepository,mergedAt,additions,deletions)"; then
+    return 1
+  fi
+  # Normalize {repo, mergedAt}, strip rows older than the precise --since
+  # (the `>=` filter on gh's date-only granularity could include too much).
+  printf '%s' "$out" | jq -c --arg since "$since" '
+    .[]
+    | select((.mergedAt // "") >= $since)
+    | {number, title, url,
+       repo: (.headRepository.owner.login + "/" + .headRepository.name),
+       mergedAt,
+       additions, deletions}
+  '
+}

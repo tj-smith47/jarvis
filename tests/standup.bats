@@ -157,6 +157,38 @@ EOF
   [[ "$output" != *"resolved blocker"* ]]
 }
 
+@test "yesterday surfaces gh-merged PRs (squash/rebase merges absent from local git log)" {
+  # Override the existing gh shim so it answers `gh pr list --search ...
+  # is:merged author:@me ...` with a JSON array.
+  # gh pr list --search "<query>" --json ...   →   $1=pr $2=list $3=--search $4=<query>
+  shim_install gh '
+if [[ "$1 $2" == "pr list" ]]; then
+  query=""
+  shift 2
+  while (( $# > 0 )); do
+    case "$1" in
+      --search) query="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if [[ "$query" == *"is:merged"* ]]; then
+    cat <<EOF2
+[
+  {"number":42,"title":"feat: ship audit doc","url":"https://github.com/acme/widgets/pull/42",
+   "headRepository":{"name":"widgets","owner":{"login":"acme"}},
+   "mergedAt":"2026-04-30T18:00:00Z","additions":120,"deletions":3}
+]
+EOF2
+  else
+    printf "[]\n"
+  fi
+  exit 0
+fi'
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"🚀 acme/widgets#42"*"feat: ship audit doc"* ]]
+}
+
 @test "yesterday surfaces tasks closed in the standup window" {
   # Drop a done-yesterday task into the fixture profile.
   jq -nc \
