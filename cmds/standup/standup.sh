@@ -220,15 +220,75 @@ fi
 jira_today="$(_silence jira_in_flight "$profile" || true)"
 
 # ----------------------------------------------------------- blockers
+# Pre-fix the blocker scan was filtered by `updated_at >= since_iso`, which
+# meant a blocker that had been real for 5 days but received no recent edit
+# silently dropped out of the standup view — the exact opposite of what the
+# section is for. Now we list every active (non-archived) blocker note
+# regardless of recency, and render an age suffix so the reader can tell
+# which ones are stale.
+#
+# Each row also carries a body excerpt so the title isn't the only context
+# (titles like "auth broken" force you to re-open the note to remember
+# what's actually broken).
+#
+# Task store does not carry a `tags` field today, so task-side blockers
+# are NOT scanned here — that needs a schema decision before it can land.
+_blocker_excerpt() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  awk '
+    BEGIN { fm = 0 }
+    NR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+    fm && /^---[[:space:]]*$/      { fm = 0; next }
+    fm                              { next }
+    /^[[:space:]]*$/                { next }
+    /^[[:space:]]*#/                { next }
+    {
+      sub(/^[[:space:]]*[-*][[:space:]]+/, "")
+      sub(/^[[:space:]]+/, "")
+      if (length($0) > 80) print substr($0, 1, 79) "…"
+      else print $0
+      exit
+    }
+  ' "$f"
+}
+
 blockers=""
 if [[ -f "$profile_dir/notes/index.json" ]]; then
-  blockers="$(jq -r --arg s "$since_iso" '
+  # Emit TSV: <relative-path>\t<title>\t<age-string>
+  # `age_str` derives from updated_at vs now_iso; honors JARVIS_FAKE_NOW.
+  blocker_tsv="$(jq -r --arg now "$now_iso" '
+    def age_str:
+      if (.updated_at // "") != "" then
+        (($now | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) -
+         (.updated_at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) as $secs
+        | if    $secs < 60     then ""
+          elif  $secs < 3600   then "(\($secs / 60   | floor)m)"
+          elif  $secs < 86400  then "(\($secs / 3600 | floor)h)"
+          else                      "(\($secs / 86400 | floor)d)" end
+      else "" end;
     .notes[]?
     | select((.archived // false) == false
-             and ((.tags // []) | index("blocker"))
-             and ((.updated_at // "") >= $s))
-    | "- " + (.title // (.path // "(untitled)"))
+             and ((.tags // []) | index("blocker")))
+    | (.path // "")
+      + "\t" + (.title // .path // "(untitled)")
+      + "\t" + age_str
   ' "$profile_dir/notes/index.json" 2>/dev/null || true)"
+
+  if [[ -n "$blocker_tsv" ]]; then
+    while IFS=$'\t' read -r path title age; do
+      [[ -z "$title" ]] && continue
+      line="- ${title}"
+      [[ -n "$age" ]] && line="${line} ${age}"
+      blockers+="${line}"$'\n'
+      if [[ -n "$path" && -f "$profile_dir/$path" ]]; then
+        excerpt="$(_blocker_excerpt "$profile_dir/$path" || true)"
+        [[ -n "$excerpt" ]] && blockers+="    ${excerpt}"$'\n'
+      fi
+    done <<< "$blocker_tsv"
+    # Trim trailing newline so the consumer sed can prefix uniformly.
+    blockers="${blockers%$'\n'}"
+  fi
 fi
 
 # ----------------------------------------------------------- --join / --meeting

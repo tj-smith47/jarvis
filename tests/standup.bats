@@ -126,3 +126,58 @@ EOF
   [[ "$output" == *"no-remote-repo@"* ]]
   [[ "$output" == *"fix: noremote work"* ]]
 }
+
+@test "blockers: long-standing note (older than --since) is still surfaced" {
+  # Pre-fix the section silently filtered out blockers that hadn't been
+  # touched in the standup window — exactly the ones most likely to need
+  # attention. Stale-but-unresolved blockers must show.
+  cat > "$JARVIS_HOME/test/notes/index.json" <<EOF
+{"version":1,"notes":[
+  {"path":"notes/inbox/old-blocker.md","kind":"inbox","title":"old blocker — 30 days stale","tags":["blocker"],
+   "updated_at":"2026-04-01T10:00:00Z","archived":false}
+]}
+EOF
+  mkdir -p "$JARVIS_HOME/test/notes/inbox"
+  printf 'still real after 30 days. waiting on infra team.\n' \
+    > "$JARVIS_HOME/test/notes/inbox/old-blocker.md"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"old blocker — 30 days stale"* ]]
+}
+
+@test "blockers: archived notes are still excluded" {
+  cat > "$JARVIS_HOME/test/notes/index.json" <<EOF
+{"version":1,"notes":[
+  {"path":"notes/inbox/done.md","kind":"inbox","title":"resolved blocker","tags":["blocker"],
+   "updated_at":"2026-04-30T10:00:00Z","archived":true}
+]}
+EOF
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"resolved blocker"* ]]
+}
+
+@test "blockers: row carries age suffix and body excerpt" {
+  cat > "$JARVIS_HOME/test/notes/index.json" <<EOF
+{"version":1,"notes":[
+  {"path":"notes/inbox/auth-broken.md","kind":"inbox","title":"auth broken","tags":["blocker"],
+   "updated_at":"2026-04-30T15:00:00Z","archived":false}
+]}
+EOF
+  mkdir -p "$JARVIS_HOME/test/notes/inbox"
+  cat > "$JARVIS_HOME/test/notes/inbox/auth-broken.md" <<EOF
+---
+title: auth broken
+---
+
+# auth broken
+
+can't push to staging — 401 from the gateway since this morning's deploy
+EOF
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  # Title row carries age suffix; 24h boundary rolls to 1d.
+  [[ "$output" == *"auth broken (1d)"* ]]
+  # Excerpt skips frontmatter + headings, picks the first prose line
+  [[ "$output" == *"can't push to staging"* ]]
+}
