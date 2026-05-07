@@ -124,9 +124,9 @@ fi
 
 if (( count == 0 )); then
   if [[ "$all" == "true" ]]; then
-    printf '  no tasks\n'
+    log_info "no tasks"
   else
-    printf '  no open tasks\n'
+    log_info "no open tasks"
   fi
   exit 0
 fi

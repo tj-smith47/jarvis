@@ -60,7 +60,7 @@ fi
 # surfaces; static layout uses aligned printf to keep dependencies minimal
 # and output predictable in non-tty pipes.
 if (( sessions_today == 0 )); then
-  printf 'no focus sessions yet today\n'
+  printf 'no focus sessions yet today (profile: %s)\n' "${JARVIS_PROFILE:-default}"
   exit 0
 fi
 

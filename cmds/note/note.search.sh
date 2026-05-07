@@ -65,6 +65,11 @@ set -e
 if (( rc > 1 )); then
   clift_exit "$rc" "rg failed (exit $rc) searching for: $q"
 fi
+if (( rc == 1 )); then
+  # No matches — friendly stderr; stdout stays empty so pipelines work.
+  log_info "no matches for: $q"
+  exit 0
+fi
 [[ -z "$raw" ]] && exit 0
 
 # Single jq pass: load index via --slurpfile, derive key from path,

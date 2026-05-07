@@ -272,7 +272,7 @@ if [[ -n "$jira_comments" ]]; then
   printf '%s\n' "$jira_comments" | jq -r '"    - [" + .key + "] " + .body'
   had_yesterday=1
 fi
-(( had_yesterday == 0 )) && printf '    none\n'
+(( had_yesterday == 0 )) && printf '    (none)\n'
 printf '\n'
 
 printf '  \033[1mToday\033[0m\n'
@@ -285,13 +285,13 @@ if [[ -n "$jira_today" ]]; then
   printf '%s\n' "$jira_today" | jq -r '"    - [" + .key + "] " + .summary'
   had_today=1
 fi
-(( had_today == 0 )) && printf '    none\n'
+(( had_today == 0 )) && printf '    (none)\n'
 printf '\n'
 
 printf '  \033[1mBlockers\033[0m\n'
 if [[ -n "$blockers" ]]; then
   printf '%s\n' "$blockers" | sed 's/^/    /'
 else
-  printf '    none\n'
+  printf '    (none)\n'
 fi
 printf '\n'

@@ -5,8 +5,8 @@ vars:
     - {name: since,     short: S, type: string, default: "1d", desc: "Window (e.g. 1d, 6h)"}
     - {name: repo,      short: r, type: string, default: "",   desc: "Single repo path (default cwd)"}
     - {name: all-repos,           type: bool,                  desc: "Use [standup] repos from config"}
-    - {name: join,                type: bool,                  desc: "Open the next standup meeting (T13)"}
-    - {name: meeting,             type: string, default: "",   desc: "Explicit meeting URL (T13)"}
+    - {name: join,                type: bool,                  desc: "Open the next standup meeting URL from calendar"}
+    - {name: meeting,             type: string, default: "",   desc: "Explicit meeting URL (skip calendar lookup)"}
 
 tasks:
   default:

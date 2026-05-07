@@ -136,7 +136,7 @@ fi
 
 if [[ -n "$prs" ]]; then
   printf '  \033[1mPRs awaiting your review\033[0m\n'
-  printf '%s\n' "$prs" | jq -r '"    #" + (.number|tostring) + "  " + .title'
+  printf '%s\n' "$prs" | jq -r '"    " + .repo + "#" + (.number|tostring) + "  " + .title'
   printf '\n'
 fi
 
@@ -148,7 +148,7 @@ fi
 
 if [[ -n "$deploys" ]]; then
   printf '  \033[1mDeploys\033[0m\n'
-  printf '%s\n' "$deploys" | jq -r '"    " + .service + "  " + .version + "  " + .status'
+  printf '%s\n' "$deploys" | jq -r '"    " + (.ts | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) + "  " + .service + "  " + .version + "  " + .status'
   printf '\n'
 fi
 
@@ -156,4 +156,15 @@ if [[ -n "$oncall" ]]; then
   printf '  \033[1mOncall\033[0m\n'
   printf '%s\n' "$oncall" | jq -r '"    " + .role + ":  " + .who + (if .pager then "  (pager: " + .pager + ")" else "" end)'
   printf '\n'
+fi
+
+# All-empty hint: if every section is gated off (no integrations configured /
+# no data), the user gets only the "Good morning" line. Surface a single hint
+# pointing at doctor so the silence is actionable.
+if [[ -z "$calendar" && -z "$prs" && -z "$jira_rows" && -z "$deploys" && -z "$oncall" ]]; then
+  if declare -F log_info >/dev/null 2>&1; then
+    log_info "no integrations configured — run \`jarvis doctor\` for diagnostics"
+  else
+    printf 'info: no integrations configured — run `jarvis doctor` for diagnostics\n'
+  fi
 fi

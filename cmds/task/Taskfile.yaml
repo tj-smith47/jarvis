@@ -17,7 +17,7 @@ tasks:
       FLAGS:
         - {name: priority, short: P, type: string, default: med, desc: "Priority",
            choices: [low, med, high], aliases: [pri]}
-        - {name: urgency, type: string, desc: "(deprecated) use --priority",
+        - {name: urgency, type: string, desc: "Deprecated alias for --priority",
            deprecated: "use --priority instead"}
         - {name: due, type: string, desc: "Due date (e.g. today, tomorrow, YYYY-MM-DD)"}
         - {name: project, type: string, desc: "Project bucket (omitted → inbox)"}

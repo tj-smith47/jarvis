@@ -55,7 +55,7 @@ if [[ ! -f "$idx" ]]; then
   if [[ "$json_out" == "true" ]]; then
     printf '[]\n'
   else
-    log_info "no notes"
+    log_info "no notes recorded yet — try \`jarvis note new\`"
   fi
   exit 0
 fi

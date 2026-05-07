@@ -55,7 +55,7 @@ teardown() {
   [[ "$output" == *"Oncall"* ]]
   [[ "$output" == *"alex"* ]]
   [[ "$output" == *"v1.12.3"* ]]
-  [[ "$output" == *"#482"* ]]
+  [[ "$output" == *"org/repo#482"* ]]
 }
 
 @test "brief --short matches snapshot byte-for-byte" {

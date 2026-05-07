@@ -67,10 +67,11 @@ run_search() {
   [[ "$stderr" == *"usage"* ]]
 }
 
-@test "search no matches → exit 0, no output" {
-  CLIFT_POS_1="thisdefinitelydoesnotappear" run run_search
+@test "search no matches → exit 0, empty stdout, friendly stderr" {
+  CLIFT_POS_1="thisdefinitelydoesnotappear" run --separate-stderr run_search
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+  [[ "$stderr" == *"no matches for: thisdefinitelydoesnotappear"* ]]
 }
 
 @test "search --regex enables regex (anchors work)" {
