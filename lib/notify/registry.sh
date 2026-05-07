@@ -11,6 +11,12 @@
 # All channel attempts emit one JSON line via _notify_log to the per-profile
 # notify.log. Uniform shape lets tests assert via jq instead of parsing
 # tab-separated formats that drift.
+#
+# Sensitivity: the message field is the user-visible reminder body. It can
+# carry tokens, secrets, or PII that the user pasted into a reminder. The
+# log file is created mode 0600 and never rotated by jarvis itself — treat
+# it as user-private. If you forward this file off-host (logrotate, etc.),
+# scrub the message field first.
 
 # shellcheck disable=SC2317
 if [[ -n "${_JARVIS_NOTIFY_REGISTRY_LOADED:-}" ]]; then
@@ -58,6 +64,11 @@ _notify_log() {
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   target="$(_notify_log_path "$profile")"
   mkdir -p "$(dirname "$target")"
+  # Treat notify.log as sensitive — message bodies can carry secrets/PII.
+  if [[ ! -e "$target" ]]; then
+    : > "$target"
+    chmod 0600 "$target" 2>/dev/null || true
+  fi
 
   if [[ -n "$error" ]]; then
     row="$(jq -nc \

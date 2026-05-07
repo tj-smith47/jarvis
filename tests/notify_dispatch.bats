@@ -160,7 +160,8 @@ EOF
   before="$JARVIS_PROFILE"
   notify_dispatch "$(_reminder "ping" '["gotify"]' work)"
   [ "$JARVIS_PROFILE" = "$before" ]
-  grep -q "https://gotify.work/message?token=wtok" "$(shim_log_path curl)"
+  grep -q "https://gotify.work/message" "$(shim_log_path curl)"
+  grep -q "X-Gotify-Key: wtok" "$(shim_log_path curl)"
   # notify.log lands in the work profile.
   [ -f "$JARVIS_HOME/work/notify.log" ]
 }

@@ -274,8 +274,10 @@ EOF
 
   curl_log="$(shim_log_path curl)"
   [ -f "$curl_log" ]
-  grep -q "https://gotify.work.example/message?token=wtok" "$curl_log"
-  grep -q "https://gotify.home.example/message?token=htok" "$curl_log"
+  grep -q "https://gotify.work.example/message" "$curl_log"
+  grep -q "X-Gotify-Key: wtok" "$curl_log"
+  grep -q "https://gotify.home.example/message" "$curl_log"
+  grep -q "X-Gotify-Key: htok" "$curl_log"
 
   # Each profile's reminder transitioned to delivered.
   [ "$(jq -r '.status' < "$JARVIS_HOME/work/reminders/ping-work.json")" = "delivered" ]

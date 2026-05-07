@@ -103,7 +103,8 @@ EOF
   notify_gotify "ping"
   log="$(shim_log_path curl)"
   [ -f "$log" ]
-  grep -q "https://gotify.example/message?token=tok-test" "$log"
+  grep -q "https://gotify.example/message" "$log"
+  grep -q "X-Gotify-Key: tok-test" "$log"
   grep -q "title=jarvis" "$log"
   grep -q "message=ping" "$log"
   grep -q "priority=5" "$log"
@@ -122,7 +123,8 @@ EOF
   before="$JARVIS_PROFILE"
   notify_gotify "ping" "work"
   [ "$JARVIS_PROFILE" = "$before" ]
-  grep -q "https://gotify.work/message?token=work-tok" "$(shim_log_path curl)"
+  grep -q "https://gotify.work/message" "$(shim_log_path curl)"
+  grep -q "X-Gotify-Key: work-tok" "$(shim_log_path curl)"
   # Notify.log lives under the work profile (profile-aware logging).
   [ -f "$JARVIS_HOME/work/notify.log" ]
 }

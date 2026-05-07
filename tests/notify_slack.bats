@@ -76,7 +76,9 @@ teardown() {
 }
 
 @test "curl payload is JSON {text: ...} sent to webhook URL" {
-  shim_install curl 'printf "%s\n" "$@" >> "$0.log"; exit 0'
+  # The webhook URL travels via curl --config (stdin) so it never lands on
+  # argv — capture both argv and stdin so the assertion still hits the URL.
+  shim_install curl 'printf "%s\n" "$@" >> "$0.log"; cat >> "$0.log"; exit 0'
   notify_slack "stand up"
   log="$(shim_log_path curl)"
   grep -q "https://hooks.slack.example/abc" "$log"
@@ -89,7 +91,7 @@ teardown() {
 [notify.slack]
 webhook = "https://hooks.slack.example/work"
 EOF
-  shim_install curl 'printf "%s\n" "$@" >> "$0.log"; exit 0'
+  shim_install curl 'printf "%s\n" "$@" >> "$0.log"; cat >> "$0.log"; exit 0'
   before="$JARVIS_PROFILE"
   notify_slack "ping" "work"
   [ "$JARVIS_PROFILE" = "$before" ]

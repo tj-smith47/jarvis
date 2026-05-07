@@ -31,8 +31,13 @@ notify_slack() {
 
   local body err
   body="$(jq -nc --arg t "$message" '{text:$t}')"
-  if err="$(curl -fsS -X POST -H 'Content-Type: application/json' \
-              -d "$body" "$webhook" 2>&1 >/dev/null)"; then
+  # The webhook URL is token-bearing — passing it on the command line means
+  # the secret is visible in `ps` / /proc/<pid>/cmdline. Feed it via curl's
+  # --config (stdin) so it never appears in argv.
+  if err="$(printf 'url = "%s"\n' "$webhook" \
+              | curl -fsS --config - -X POST \
+                  -H 'Content-Type: application/json' \
+                  -d "$body" 2>&1 >/dev/null)"; then
     _notify_log slack true "$message" "" "$profile"
     return 0
   fi

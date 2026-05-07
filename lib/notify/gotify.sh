@@ -36,8 +36,12 @@ notify_gotify() {
     return 0
   fi
 
+  # Pass the token via header instead of URL query string — query-string
+  # tokens are visible in `ps` / /proc/<pid>/cmdline and routinely end up
+  # in webserver access logs on the receiver side.
   local err
-  if err="$(curl -fsS -X POST "${url}/message?token=${token}" \
+  if err="$(curl -fsS -X POST "${url}/message" \
+              -H "X-Gotify-Key: ${token}" \
               -F "title=jarvis" \
               -F "message=${message}" \
               -F "priority=${priority}" 2>&1 >/dev/null)"; then

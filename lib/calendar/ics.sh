@@ -36,6 +36,24 @@ calendar_ics_events() {
   local body
   if [[ "$source" =~ ^https?:// ]]; then
     command -v curl >/dev/null 2>&1 || return 1
+    # Refuse SSRF-prone targets up front. The user normally configures a
+    # public ICS feed; an internal host or a cloud metadata IP is almost
+    # certainly a misconfiguration or attempted exfil — fail closed with a
+    # diagnostic instead of curling it.
+    local _host="${source#http://}"; _host="${_host#https://}"
+    _host="${_host%%[/?#:]*}"
+    case "$_host" in
+      localhost|127.0.0.1|0.0.0.0|::1|169.254.169.254)
+        printf 'ics: refusing to fetch internal/metadata host: %s\n' "$_host" >&2
+        return 1
+        ;;
+      10.*|192.168.*) ;& # fall-through to RFC1918 reject
+      172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*) ;&
+      172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*)
+        printf 'ics: refusing to fetch RFC1918 host: %s\n' "$_host" >&2
+        return 1
+        ;;
+    esac
     # Don't suppress curl stderr — `jarvis doctor` calls the provider directly
     # to surface diagnostics. Brief/standup go through the dispatcher which
     # silences provider stderr at the hot-path layer.

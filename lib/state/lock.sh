@@ -27,6 +27,12 @@ state_with_lock() {
     flock 9
     # eval is intentional: callers pass shell snippets (redirects, subshells)
     # as a single string, not argv — e.g. state_with_lock "$f" 'mv a b'.
+    #
+    # SAFETY: the snippet is evaluated as shell. Never pass user-derived /
+    # network-derived strings here — only literals or values you've already
+    # bounded yourself. Today's callers (state_json_mutate, registry.sh)
+    # interpolate file paths Jarvis controls; do not extend that list
+    # without auditing the call site.
     # shellcheck disable=SC2294
     eval "$@"
   ) 9<"$lockfile"

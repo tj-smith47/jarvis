@@ -26,7 +26,13 @@ notify_local() {
   fi
 
   if command -v osascript >/dev/null 2>&1; then
-    if osascript -e "display notification \"$message\" with title \"jarvis\"" \
+    # AppleScript string literal: backslash-escape `\` and `"` in $message
+    # before interpolating into the `-e` argument. Without this a message
+    # body containing a quote (`"`) breaks the script and at the limit lets
+    # AppleScript injection through.
+    local _osa_msg="${message//\\/\\\\}"
+    _osa_msg="${_osa_msg//\"/\\\"}"
+    if osascript -e "display notification \"$_osa_msg\" with title \"jarvis\"" \
         >/dev/null 2>&1; then
       _notify_log local true "$message" "" "$profile"
       return 0
