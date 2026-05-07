@@ -83,6 +83,36 @@ esac'
   [ "$status" -eq 1 ]
 }
 
+@test "jira_in_flight surfaces priority, due, parent when columns present" {
+  shim_install jira '
+case "$1 $2" in
+  "me ")    echo "alice"; exit 0 ;;
+  "issue list")
+    printf "KEY\tSUMMARY\tSTATUS\tPRIORITY\tDUEDATE\tPARENT\n"
+    printf "PLAT-77\tShip release\tIn Progress\tHigh\t2026-05-09\tEPIC-9\n"
+    exit 0 ;;
+esac'
+  run jira_in_flight test
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | jq -e '.priority == "High" and .due == "2026-05-09" and .parent == "EPIC-9"' > /dev/null
+}
+
+@test "jira_in_flight tolerates 3-column shims (priority/due/parent default to empty)" {
+  shim_install jira '
+case "$1 $2" in
+  "me ")    echo "alice"; exit 0 ;;
+  "issue list")
+    cat <<EOF
+KEY	SUMMARY	STATUS
+PLAT-1	Old shim	In Progress
+EOF
+    exit 0 ;;
+esac'
+  run jira_in_flight test
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | jq -e '.key == "PLAT-1" and .priority == "" and .due == "" and .parent == ""' > /dev/null
+}
+
 @test "jira summary with quotes is JSON-escaped" {
   shim_install jira '
 case "$1 $2" in

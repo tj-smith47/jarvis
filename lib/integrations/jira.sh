@@ -31,14 +31,19 @@ _jira_me() {
 
 _jira_emit_ndjson() {
   local out="$1" base="$2"
+  # Columns past STATUS are optional — older shims and `jira` configs that
+  # don't expose priority/duedate/parent emit only the first three. The
+  # awk emits empty strings for any missing column so consumers can
+  # `// ""` cleanly.
   printf '%s\n' "$out" | awk -F'\t' -v base="$base" '
+    function jesc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); return s }
     NR > 1 && NF >= 3 {
-      k=$1; s=$2; st=$3
-      gsub(/\\/, "\\\\", k); gsub(/"/, "\\\"", k)
-      gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s)
-      gsub(/\\/, "\\\\", st); gsub(/"/, "\\\"", st)
-      printf "{\"key\":\"%s\",\"summary\":\"%s\",\"status\":\"%s\",\"url\":\"%s/browse/%s\"}\n",
-             k, s, st, base, k
+      k = $1; s = $2; st = $3
+      pri = (NF >= 4 ? $4 : "")
+      due = (NF >= 5 ? $5 : "")
+      par = (NF >= 6 ? $6 : "")
+      printf "{\"key\":\"%s\",\"summary\":\"%s\",\"status\":\"%s\",\"url\":\"%s/browse/%s\",\"priority\":\"%s\",\"due\":\"%s\",\"parent\":\"%s\"}\n",
+             jesc(k), jesc(s), jesc(st), base, k, jesc(pri), jesc(due), jesc(par)
     }'
 }
 
@@ -47,7 +52,11 @@ jira_in_flight() {
   command -v jira >/dev/null 2>&1 || return 1
   local me out
   me="$(_jira_me)" || return 1
-  if ! out="$(jira issue list -a"$me" -s"In Progress" --plain --columns key,summary,status)"; then
+  # Extended columns surface priority badge, due date, and parent epic in
+  # consumer renders — these were buried metadata pre-fix, even though
+  # the jira CLI exposes them in one round trip.
+  if ! out="$(jira issue list -a"$me" -s"In Progress" --plain \
+                --columns key,summary,status,priority,duedate,parent)"; then
     return 1
   fi
   _jira_emit_ndjson "$out" "$(_jira_base_url "$profile")"
@@ -62,8 +71,8 @@ jira_my_open_issues() {
   command -v jira >/dev/null 2>&1 || return 1
   local me out
   me="$(_jira_me)" || return 1
-  if ! out="$(jira issue list -a"$me" -s"To Do" -s"In Progress" \
-                --plain --columns key,summary,status)"; then
+  if ! out="$(jira issue list -a"$me" -s"To Do" -s"In Progress" --plain \
+                --columns key,summary,status,priority,duedate,parent)"; then
     return 1
   fi
   _jira_emit_ndjson "$out" "$(_jira_base_url "$profile")"

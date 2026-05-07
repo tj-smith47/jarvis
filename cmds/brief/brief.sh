@@ -258,8 +258,14 @@ if [[ -n "$reminders" ]]; then
 fi
 
 if [[ -n "$jira_rows" ]]; then
+  # Each row carries priority/due/parent post-fix (jira.sh extended its
+  # column projection). Render shows priority as a bracketed badge, due
+  # date when set, and uses the URL when clicking through is wanted.
   printf '  \033[1mJira in flight\033[0m\n'
-  printf '%s\n' "$jira_rows" | jq -r '"    " + .key + "  " + .summary'
+  printf '%s\n' "$jira_rows" | jq -r '
+    "    " + .key + "  " + .summary +
+    (if (.priority // "") != "" and .priority != "null" then "  [\(.priority)]" else "" end) +
+    (if (.due // "") != "" and .due != "null" then "  due \(.due)" else "" end)'
   printf '\n'
 fi
 
