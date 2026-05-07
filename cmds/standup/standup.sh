@@ -144,7 +144,9 @@ fi
 # is appended (`<slug>@<short>`) so every row is actionable.
 _standup_repo_slug() {
   local dir="$1" origin
-  origin="$(cd "$dir" 2>/dev/null && git config remote.origin.url 2>/dev/null || true)"
+  # Subshell isolates the cd; failure of either cd or `git config` yields
+  # an empty origin and we fall through to the basename path.
+  origin="$(cd "$dir" 2>/dev/null && git config remote.origin.url 2>/dev/null)" || origin=""
   if [[ -z "$origin" ]]; then
     (cd "$dir" 2>/dev/null && basename "$(pwd)")
     return 0
