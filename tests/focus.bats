@@ -68,7 +68,11 @@ run_focus() {
   [ "$(jq -r 'select(.event=="end")   | .topic' "$LOG" | head -1)"    = "demo" ]
 }
 
-@test "focus 1s (no --on): topic is JSON null in both rows" {
+@test "focus 1s (no --on, non-git cwd): topic is JSON null in both rows" {
+  # cwd matters: git-repo cwds get auto-defaulted to repo:branch via the
+  # focus.sh git fallback. Pin a non-git cwd so this test stays about the
+  # null-topic-when-no-data path specifically.
+  cd "$TEST_DIR"
   run run_focus 1s --silent
   [ "$status" -eq 0 ]
   [ "$(jq -sc '[.[].topic] | unique' "$LOG")" = "[null]" ]
@@ -142,4 +146,35 @@ run_focus() {
   source "$JARVIS_DIR/lib/focus/log.sh"
   run focus_orphan_starts
   [ "$(echo "$output" | jq -r '.topic')" = "orphan" ]
+}
+
+@test "focus auto-defaults topic to <repo>:<branch> when --on omitted in a git repo" {
+  REPO="$TEST_DIR/myproj"
+  mkdir -p "$REPO"
+  ( cd "$REPO" && git init -q --initial-branch=feat-auto-topic \
+    && git config user.email a@b.com && git config user.name a )
+  cd "$REPO" && run_focus 1s --silent
+  cd "$JARVIS_DIR"
+  local log="$JARVIS_HOME/test/focus.log"
+  [ -f "$log" ]
+  [ "$(jq -r 'select(.event=="start") | .topic' "$log" | head -1)" = "myproj:feat-auto-topic" ]
+}
+
+@test "focus --on explicit beats the git-branch auto-default" {
+  REPO="$TEST_DIR/myproj"
+  mkdir -p "$REPO"
+  ( cd "$REPO" && git init -q --initial-branch=auto && git config user.email a@b.com && git config user.name a )
+  cd "$REPO" && run_focus 1s --on explicit-topic --silent
+  cd "$JARVIS_DIR"
+  local log="$JARVIS_HOME/test/focus.log"
+  [ "$(jq -r 'select(.event=="start") | .topic' "$log" | head -1)" = "explicit-topic" ]
+}
+
+@test "focus in a non-git cwd leaves topic empty when --on omitted" {
+  # No git repo at cwd — fallback chain doesn't fire, topic stays null.
+  cd "$TEST_DIR" && run_focus 1s --silent
+  cd "$JARVIS_DIR"
+  local log="$JARVIS_HOME/test/focus.log"
+  # Topic is null in NDJSON when unset (focus_log_append uses null for empty).
+  [ "$(jq -r 'select(.event=="start") | .topic' "$log" | head -1)" = "null" ]
 }

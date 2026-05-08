@@ -20,6 +20,10 @@ run_add() {
   local due="${1:-}"; shift || true
   local project="${1:-inbox}"; shift || true
   local urgency="${1:-}"; shift || true
+  # Clear EDITOR / VISUAL so an empty CLIFT_POS_1 (test for "no desc")
+  # doesn't fall through to the editor path that the new C1 wiring
+  # introduces. Tests that want to exercise the editor path do so
+  # explicitly via the dedicated test cases below.
   FRAMEWORK_DIR="$CLIFT_FRAMEWORK_DIR" \
   CLI_DIR="$JARVIS_DIR" \
   CLIFT_RUN_DESC="$desc" \
@@ -27,6 +31,7 @@ run_add() {
   CLIFT_RUN_DUE="$due" \
   CLIFT_RUN_PROJECT="$project" \
   CLIFT_RUN_URGENCY="$urgency" \
+  EDITOR="" VISUAL="" \
   bash -c '
     set -euo pipefail
     declare -A CLIFT_FLAGS=(
@@ -183,4 +188,66 @@ _task_add_argv() {
   run _task_add_argv "needs grep" --tag "bad tag"
   [ "$status" -eq 2 ]
   [[ "$output" == *"invalid --tag"* ]] || [[ "${stderr:-}" == *"invalid --tag"* ]]
+}
+
+@test "task add reads desc from stdin when no positional" {
+  run bash -c '
+    FRAMEWORK_DIR="$1" CLI_DIR="$2" \
+    bash "$2/cmds/task/task.add.sh" <<<"piped from stdin"
+  ' _ "$CLIFT_FRAMEWORK_DIR" "$JARVIS_DIR"
+  [ "$status" -eq 0 ]
+  local slug="${lines[-1]}"
+  [ "$(jq -r '.desc' "$JARVIS_HOME/test/tasks/$slug.json")" = "piped from stdin" ]
+}
+
+@test "task add positional beats stdin (positional wins)" {
+  run bash -c '
+    FRAMEWORK_DIR="$1" CLI_DIR="$2" \
+    bash "$2/cmds/task/task.add.sh" "explicit" <<<"piped"
+  ' _ "$CLIFT_FRAMEWORK_DIR" "$JARVIS_DIR"
+  [ "$status" -eq 0 ]
+  local slug="${lines[-1]}"
+  [ "$(jq -r '.desc' "$JARVIS_HOME/test/tasks/$slug.json")" = "explicit" ]
+}
+
+@test "task add opens \$EDITOR when no positional and stdin is a tty" {
+  # Shim EDITOR to a script file (cleaner than inline `bash -c` quoting).
+  # </dev/null in the bash invocation closes stdin so task.add.sh sees
+  # stdin-not-a-pipe → the EDITOR path fires.
+  cat > "$TEST_DIR/fake-editor.sh" <<'EDIT'
+#!/usr/bin/env bash
+printf 'from-editor task\n' > "$1"
+EDIT
+  chmod +x "$TEST_DIR/fake-editor.sh"
+  run bash -c '
+    FRAMEWORK_DIR="$1" CLI_DIR="$2" EDITOR="$3" VISUAL="" \
+    bash "$2/cmds/task/task.add.sh" </dev/null
+  ' _ "$CLIFT_FRAMEWORK_DIR" "$JARVIS_DIR" "$TEST_DIR/fake-editor.sh"
+  [ "$status" -eq 0 ]
+  local slug="${lines[-1]}"
+  [ "$(jq -r '.desc' "$JARVIS_HOME/test/tasks/$slug.json")" = "from-editor task" ]
+}
+
+@test "task add: editor abandoned (empty buffer) → exit 2" {
+  # Editor script truncates the file to empty, simulating "saved with
+  # nothing typed" — task.add.sh treats that as a cancel.
+  cat > "$TEST_DIR/empty-editor.sh" <<'EDIT'
+#!/usr/bin/env bash
+:> "$1"
+EDIT
+  chmod +x "$TEST_DIR/empty-editor.sh"
+  run bash -c '
+    FRAMEWORK_DIR="$1" CLI_DIR="$2" EDITOR="$3" VISUAL="" \
+    bash "$2/cmds/task/task.add.sh" </dev/null
+  ' _ "$CLIFT_FRAMEWORK_DIR" "$JARVIS_DIR" "$TEST_DIR/empty-editor.sh"
+  [ "$status" -eq 2 ]
+}
+
+@test "task add: no positional, stdin closed, no EDITOR → exit 2 with usage" {
+  run bash -c '
+    FRAMEWORK_DIR="$1" CLI_DIR="$2" EDITOR="" VISUAL="" \
+    bash "$2/cmds/task/task.add.sh" </dev/null
+  ' _ "$CLIFT_FRAMEWORK_DIR" "$JARVIS_DIR"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage:"* ]] || [[ "$output" == *"task add"* ]]
 }

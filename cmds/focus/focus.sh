@@ -38,6 +38,28 @@ if [[ ! "$duration" =~ ^[0-9]+[smhd]$ ]]; then
   clift_exit 2 "duration must match ^[0-9]+[smhd]\$ (e.g. 25m, 10s, 1h)"
 fi
 
+# Auto-default topic from the cwd's git context when --on is omitted. The
+# topic is the load-bearing aggregation key for `focus stats`; pre-fix the
+# user had to type it every session, and most just stopped — sessions
+# landed in focus.log with topic=null and `focus stats` had nothing useful
+# to group on. The fallback shape `<repo>:<branch>` mirrors how engineers
+# describe their day in standup ("8h on jarvis:feat/auth"), so the
+# auto-default lines up with how the data is consumed downstream.
+if [[ -z "$topic" ]] && command -v git >/dev/null 2>&1; then
+  _focus_repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$_focus_repo_root" ]]; then
+    _focus_branch="$(git branch --show-current 2>/dev/null || true)"
+    _focus_repo="$(basename "$_focus_repo_root")"
+    if [[ -n "$_focus_branch" ]]; then
+      topic="${_focus_repo}:${_focus_branch}"
+    else
+      # Detached HEAD or fresh repo — drop branch suffix rather than
+      # synthesizing a misleading one.
+      topic="$_focus_repo"
+    fi
+  fi
+fi
+
 # Convert to seconds for `sleep`.
 _unit="${duration: -1}"
 _value="${duration%?}"

@@ -62,6 +62,10 @@ includes:
     taskfile: ./cmds/doctor
   meeting:
     taskfile: ./cmds/meeting
+  notify:
+    taskfile: ./cmds/notify
+  cleanup:
+    taskfile: ./cmds/cleanup
 tasks:
   default:
     cmd:

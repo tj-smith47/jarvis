@@ -1,0 +1,58 @@
+version: '3'
+
+vars:
+  FLAGS: []
+
+tasks:
+  default:
+    desc: "Compact focus.log / notify.log + drop delivered reminders + done tasks beyond retention"
+    summary: |
+      Apply a retention policy to the per-profile state directory. Default
+      threshold is 90 days; --before <duration> overrides.
+
+      The intended driver is cron: `jarvis cleanup install` writes a
+      daily 03:00 line that runs `jarvis cleanup --confirm`. Manual
+      invocation is supported (--dry-run by default to surface what
+      would change; --confirm to actually do it) but the cron-based
+      path is what we recommend.
+
+      Targets:
+        focus.log               compact NDJSON in place — keep rows ts >= cutoff
+        notify.log              same shape, same threshold
+        reminders/*.json        drop one-shot delivered (status=delivered)
+                                older than cutoff; recurring reminders
+                                are never deleted
+        tasks/*.json            done tasks where done_at < cutoff
+
+      Examples:
+        jarvis cleanup                        # dry-run, default 90d threshold
+        jarvis cleanup --before 30d            # 30-day retention preview
+        jarvis cleanup --confirm               # apply the default
+        jarvis cleanup --confirm --before 30d  # apply with custom threshold
+        jarvis cleanup install                 # daily 03:00 cron line
+    vars:
+      FLAGS:
+        - {name: before,  type: string, default: "90d", desc: "Retention threshold (Nd|Nw|Nm — month=30d)"}
+        - {name: confirm, type: bool,                   desc: "Actually mutate state (default is dry-run)"}
+        - {name: json,    type: bool,                   desc: "Emit a structured plan JSON (no mutation)"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  install:
+    desc: "Install a daily cron line that runs `cleanup --confirm`"
+    summary: |
+      Wires the cleanup tick into your crontab. Default fire time is
+      03:00 (least likely to overlap with the user's active session and
+      after most overnight automation has settled).
+
+      Examples:
+        jarvis cleanup install                  # daily 03:00, --before 90d
+        jarvis cleanup install --at 04:30 --before 30d
+        jarvis cleanup install --uninstall
+        jarvis cleanup install --dry-run        # preview cron line
+    vars:
+      FLAGS:
+        - {name: at,        type: string, default: "03:00", desc: "Fire time HH:MM (default 03:00)"}
+        - {name: before,    type: string, default: "90d",   desc: "Threshold passed to the cron-fired cleanup"}
+        - {name: uninstall, type: bool,                     desc: "Remove the cron line"}
+        - {name: dry-run,   type: bool,                     desc: "Print the cron line; don't write"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

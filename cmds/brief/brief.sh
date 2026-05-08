@@ -36,6 +36,7 @@ if ! declare -p CLIFT_FLAGS >/dev/null 2>&1; then
       {"name":"skip-focus","type":"bool"},
       {"name":"skip-tasks","type":"bool"},
       {"name":"skip-notes","type":"bool"},
+      {"name":"notify","type":"string"},
       {"name":"profile","type":"string"}]' \
     "$@"
 fi
@@ -50,6 +51,48 @@ skip_rem="${CLIFT_FLAGS[skip-reminders]:-}"
 skip_focus="${CLIFT_FLAGS[skip-focus]:-}"
 skip_tasks="${CLIFT_FLAGS[skip-tasks]:-}"
 skip_notes="${CLIFT_FLAGS[skip-notes]:-}"
+notify_channel="${CLIFT_FLAGS[notify]:-}"
+
+# When --notify is set, the entire brief render is captured and fan'd-out
+# through notify_dispatch instead of going to stdout. Used by `brief
+# install` cron lines so the morning brief lands in the user's preferred
+# delivery channel (gotify, slack, email) rather than cron's default
+# email-the-output behavior. Implemented by re-exec'ing this script
+# without --notify, capturing stdout, then dispatching.
+if [[ -n "$notify_channel" ]]; then
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/state/profile.sh"
+  state_profile_dir >/dev/null  # exports JARVIS_PROFILE
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/state/config.sh"
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/state/lock.sh"
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/notify/registry.sh"
+  for _ch in local gotify slack email; do
+    # shellcheck source=/dev/null
+    source "${CLI_DIR}/lib/notify/${_ch}.sh"
+  done
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/notify/dispatch.sh"
+
+  # Re-run ourselves with all the same flags except --notify; capture stdout.
+  _brief_argv=()
+  for _f in short skip-calendar skip-prs skip-jira skip-deploys \
+            skip-oncall skip-reminders skip-focus skip-tasks skip-notes; do
+    [[ "${CLIFT_FLAGS[$_f]:-}" == "true" ]] && _brief_argv+=("--$_f")
+  done
+  body="$(bash "${BASH_SOURCE[0]}" "${_brief_argv[@]+"${_brief_argv[@]}"}" \
+          --profile "${JARVIS_PROFILE:-default}" 2>&1)"
+
+  reminder_json="$(jq -nc \
+    --arg msg "$body" \
+    --arg ch "$notify_channel" \
+    --arg p "${JARVIS_PROFILE:-default}" \
+    '{message:$msg, via:[$ch], profile:$p}')"
+  notify_dispatch "$reminder_json"
+  exit $?
+fi
 
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/profile.sh"

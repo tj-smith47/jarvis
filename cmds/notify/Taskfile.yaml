@@ -1,0 +1,30 @@
+version: '3'
+
+vars:
+  FLAGS: []
+
+tasks:
+  configure:
+    desc: "Configure a notification channel interactively (gotify / slack / email)"
+    summary: |
+      Prompts for the channel-specific values and writes the resulting
+      [notify.<channel>] block to the active profile's config.toml. Use
+      --non-interactive when piping values from stdin or a script (the
+      same prompts are read with no echo + the same validation).
+
+      Examples:
+        jarvis notify configure gotify
+        jarvis notify configure slack
+        jarvis notify configure email
+        printf 'https://gotify.example.com\nMY-TOKEN\n5\n' \
+          | jarvis notify configure gotify --non-interactive
+
+      Channels and prompts:
+        gotify   url + token (+ priority)
+        slack    webhook URL
+        email    to + from + subject_prefix + transport
+    vars:
+      FLAGS:
+        - {name: non-interactive, type: bool, desc: "Read values from stdin without prompting"}
+        - {name: dry-run,         type: bool, desc: "Print the [notify.*] block instead of writing"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

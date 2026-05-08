@@ -14,6 +14,27 @@ vars:
     - {name: skip-notes,                type: bool, desc: "Hide Notes section"}
 
 tasks:
+  install:
+    desc: "Install a daily cron line to fire `brief --short` at a fixed time"
+    summary: |
+      Wires `jarvis brief` into your crontab so the morning brief fires
+      automatically. Pair with --notify to deliver the output through
+      a configured channel (set up via `jarvis notify configure …`).
+
+      Examples:
+        jarvis brief install                              # 08:00 daily, stdout
+        jarvis brief install --at 07:30                   # different time
+        jarvis brief install --at 08:00 --notify gotify   # to Gotify
+        jarvis brief install --uninstall                  # remove the line
+        jarvis brief install --dry-run                    # preview line
+    vars:
+      FLAGS:
+        - {name: at,        type: string, default: "08:00", desc: "Fire time HH:MM (default 08:00)"}
+        - {name: notify,    type: string, desc: "Notify channel (gotify|slack|email|local)"}
+        - {name: uninstall, type: bool,                desc: "Remove the cron line"}
+        - {name: dry-run,   type: bool,                desc: "Print the cron line; don't write"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
   default:
     desc: "Morning briefing — calendar, PRs, jira, deploys, oncall, tasks, notes"
     summary: |
@@ -39,6 +60,7 @@ tasks:
         jarvis brief --short
         jarvis brief --skip-jira --profile work
         jarvis brief --skip-tasks --skip-notes
+        jarvis brief --short --notify gotify    # pipe through notify
     vars:
       FLAGS:
         - {name: short,           short: s, type: bool, desc: "One-line summary instead of full brief"}
@@ -51,4 +73,5 @@ tasks:
         - {name: skip-focus,                type: bool, desc: "Hide Focus-yesterday line"}
         - {name: skip-tasks,                type: bool, desc: "Hide Tasks section"}
         - {name: skip-notes,                type: bool, desc: "Hide Notes section"}
+        - {name: notify,                    type: string, desc: "Pipe rendered output through notify channel (gotify|slack|email|local)"}
     cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

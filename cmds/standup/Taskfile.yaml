@@ -19,6 +19,10 @@ tasks:
         jarvis standup
         jarvis standup --since 6h --repo /opt/repos/cfgd
         jarvis standup --all-repos
+
+      To populate `[standup] repos` automatically, run:
+        jarvis standup discover           # walk $HOME, prompt to write
+        jarvis standup discover --append  # merge into existing list
     vars:
       FLAGS:
         - {name: since,     short: S, type: string, default: "1d"}
@@ -26,4 +30,27 @@ tasks:
         - {name: all-repos,           type: bool}
         - {name: join,                type: bool}
         - {name: meeting,             type: string, default: ""}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  discover:
+    desc: "Walk $HOME for git repos and populate [standup].repos in config.toml"
+    summary: |
+      One-shot setup helper. Default: prints discovered paths and prompts
+      y/N to write. --write skips the prompt. --append merges with the
+      existing list. --json emits a JSON array (no prompt, no write).
+
+      Examples:
+        jarvis standup discover                  # prompt
+        jarvis standup discover --write          # auto-write
+        jarvis standup discover --append --yes   # merge new entries
+        jarvis standup discover --root ~/work    # different root
+        jarvis standup discover --max-depth 6    # walk deeper
+    vars:
+      FLAGS:
+        - {name: write,     type: bool,             desc: "Skip prompt; write the discovered list"}
+        - {name: append,    type: bool,             desc: "Merge into existing list (don't replace)"}
+        - {name: json,      type: bool,             desc: "Emit a JSON array; no prompt, no write"}
+        - {name: max-depth, type: string, default: "4", desc: "find maxdepth (default 4)"}
+        - {name: root,      type: string,           desc: "Walk root (default $HOME)"}
+        - {name: yes, short: y, type: bool,         desc: "Skip prompt; assume yes"}
     cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

@@ -39,6 +39,54 @@ due="${CLIFT_FLAGS[due]:-}"
 project="${CLIFT_FLAGS[project]:-inbox}"
 urgency="${CLIFT_FLAGS[urgency]:-}"
 
+# Description resolution chain (mirrors `git commit`):
+#   1. Positional $1               → use it (current behavior).
+#   2. Else if stdin is a pipe     → read entire stdin, trim.
+#   3. Else if $EDITOR is set      → open editor on a tmpfile, parse
+#                                    the first non-comment non-blank line.
+#   4. Else                        → exit 2 with usage.
+# Long descriptions with shell metacharacters get awkward to quote on the
+# command line; the stdin + editor paths sidestep that by letting bash /
+# the editor do the I/O. Tests cover all four branches.
+if [[ -z "$desc" && ! -t 0 ]]; then
+  desc="$(cat)"
+  # Strip leading/trailing whitespace + collapse trailing newlines so a
+  # `printf "x\n" | task add` doesn't write "x\n" as the desc.
+  desc="${desc#"${desc%%[![:space:]]*}"}"
+  desc="${desc%"${desc##*[![:space:]]}"}"
+fi
+if [[ -z "$desc" && -n "${EDITOR:-}${VISUAL:-}" ]]; then
+  _editor="${VISUAL:-${EDITOR}}"
+  _tmp="$(mktemp -t jarvis-task.XXXXXX 2>/dev/null || mktemp)"
+  cat > "$_tmp" <<'EDITOR_TEMPLATE'
+
+# Type your task description on the first line.
+# Lines starting with `#` are dropped, as are blank leading lines.
+# Save and exit to create the task; abort with an empty body to cancel.
+EDITOR_TEMPLATE
+  # EDITOR may carry args (e.g. "vim --no-swap-file") so split into an
+  # argv array via word-splitting. Doesn't handle editor paths with
+  # whitespace — same caveat as git, svn, etc.; users with such paths
+  # set $VISUAL or wrap in a script. `declare -a` (not `local`) because
+  # this is script-top-level scope, not a function.
+  declare -a _editor_argv
+  read -ra _editor_argv <<< "$_editor"
+  # Redirect to /dev/tty so the editor talks to the user, not bats's
+  # captured fd. Tests that want to drive the editor non-interactively
+  # set EDITOR to a script that just writes to $1, with stdin closed
+  # via </dev/null on the bash invocation so this branch fires.
+  if [[ -t 0 ]]; then
+    "${_editor_argv[@]}" "$_tmp" </dev/tty >/dev/tty 2>/dev/tty || true
+  else
+    "${_editor_argv[@]}" "$_tmp" || true
+  fi
+  desc="$(grep -vE '^[[:space:]]*#' "$_tmp" \
+          | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+          | grep -vE '^$' \
+          | head -1 || true)"
+  rm -f "$_tmp"
+fi
+
 # --tag is a list flag. Build a normalized JSON array (lowercased, deduped,
 # whitespace-trimmed) so blockers / list filters can match by exact string.
 # Default-empty `[]` lets task_store_build land its `tags: []` field shape
@@ -69,7 +117,8 @@ if (( _tag_count > 0 )); then
 fi
 
 if [[ -z "$desc" ]]; then
-  clift_exit 2 "usage: jarvis task add <description> [--priority low|med|high] [--due DATE] [--project NAME]"
+  clift_exit 2 "usage: jarvis task add <description> [--priority low|med|high] [--due DATE] [--project NAME] [--tag T]
+       (or pipe stdin: 'echo \"…\" | jarvis task add', or set \$EDITOR)"
 fi
 
 # --urgency fallback (framework emits its own deprecation warning).
