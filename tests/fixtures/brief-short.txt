@@ -1,1 +1,1 @@
-brief (test): 1 PR · 2 deploys today · oncall: alex / you
+brief (test): 2 meetings · 1 PR · 2 tasks · 1 reminder · 2 deploys · oncall: alex / you

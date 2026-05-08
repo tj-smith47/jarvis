@@ -60,6 +60,8 @@ includes:
     taskfile: ./cmds/status
   doctor:
     taskfile: ./cmds/doctor
+  meeting:
+    taskfile: ./cmds/meeting
 tasks:
   default:
     cmd:

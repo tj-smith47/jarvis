@@ -287,3 +287,66 @@ EOF
   count="$(printf '%s\n' "$row" | grep -o -- '—' | wc -l)"
   [ "$count" -ge 2 ]
 }
+
+# Tag-aware seeding helper. Embeds the tags array directly so existing
+# `seed` callers don't need to know about the new field.
+seed_with_tags() {
+  local slug="$1" desc="$2" tags_csv="$3" seq="$4"
+  local tags_json
+  if [[ -z "$tags_csv" ]]; then
+    tags_json='[]'
+  else
+    # `printf '%s'` (no \n) avoids a trailing-newline tag baked into the
+    # JSON array via split(",") — the newline would silently bypass any
+    # `index("blocker")` lookup downstream.
+    tags_json="$(printf '%s' "$tags_csv" | jq -Rcs 'split(",")')"
+  fi
+  jq -n \
+    --arg slug "$slug" --arg desc "$desc" --argjson tags "$tags_json" \
+    --argjson seq "$seq" '
+    {slug:$slug, desc:$desc, status:"open", priority:"med",
+     due:null, project:"inbox", created_at:"2026-04-20T00:00:00Z",
+     updated_at:"2026-04-20T00:00:00Z", done_at:null, seq:$seq, jira_key:null,
+     tags:$tags}' > "$JARVIS_HOME/test/tasks/$slug.json"
+}
+
+_task_list_argv() {
+  FRAMEWORK_DIR="$CLIFT_FRAMEWORK_DIR" CLI_DIR="$JARVIS_DIR" \
+    bash "$JARVIS_DIR/cmds/task/task.list.sh" "$@"
+}
+
+@test "task list --tag filters to tasks carrying that tag" {
+  seed_with_tags a "blocker work" blocker 1
+  seed_with_tags b "ops work"     ops     2
+  seed_with_tags c "no tags"      ""      3
+  run _task_list_argv --tag blocker
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"blocker work"* ]]
+  [[ "$output" != *"ops work"* ]]
+  [[ "$output" != *"no tags"* ]]
+}
+
+@test "task list --tag is repeatable (OR semantics)" {
+  seed_with_tags a "blocker work" blocker 1
+  seed_with_tags b "ops work"     ops     2
+  seed_with_tags c "release work" release 3
+  run _task_list_argv --tag blocker --tag ops
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"blocker work"* ]]
+  [[ "$output" == *"ops work"* ]]
+  [[ "$output" != *"release work"* ]]
+}
+
+@test "task list renders tags inline as [tag1,tag2] suffix" {
+  seed_with_tags a "fix etcd" "blocker,ops" 1
+  run _task_list_argv
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fix etcd  [blocker,ops]"* ]]
+}
+
+@test "task list --tag with no matches prints 'no open tasks'" {
+  seed_with_tags a "blocker work" blocker 1
+  run _task_list_argv --tag missing
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no open tasks"* ]]
+}

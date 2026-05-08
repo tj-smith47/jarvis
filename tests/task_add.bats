@@ -138,3 +138,49 @@ run_add() {
   local slug="${lines[-1]}"
   [ "$(jq -r '.desc' "$JARVIS_HOME/test/tasks/$slug.json")" = "$desc" ]
 }
+
+# Helper: task add via the standalone parser path so list-flag handling
+# (--tag repeated) gets exercised. Bypasses the run_add CLIFT_FLAGS shim
+# because that shim doesn't model list flags.
+_task_add_argv() {
+  FRAMEWORK_DIR="$CLIFT_FRAMEWORK_DIR" CLI_DIR="$JARVIS_DIR" \
+    bash "$JARVIS_DIR/cmds/task/task.add.sh" "$@"
+}
+
+@test "task add stores tags: [] by default" {
+  run _task_add_argv "untagged work"
+  [ "$status" -eq 0 ]
+  local slug="${lines[-1]}"
+  [ "$(jq -r '.tags | type' "$JARVIS_HOME/test/tasks/$slug.json")" = "array" ]
+  [ "$(jq -r '.tags | length' "$JARVIS_HOME/test/tasks/$slug.json")" = "0" ]
+}
+
+@test "task add --tag stores single tag" {
+  run _task_add_argv "investigate freeze" --tag blocker
+  [ "$status" -eq 0 ]
+  local slug="${lines[-1]}"
+  [ "$(jq -r '.tags | join(",")' "$JARVIS_HOME/test/tasks/$slug.json")" = "blocker" ]
+}
+
+@test "task add --tag is repeatable and dedupes" {
+  run _task_add_argv "ops work" --tag blocker --tag ops --tag blocker
+  [ "$status" -eq 0 ]
+  local slug="${lines[-1]}"
+  # Sorted-join keeps the assertion order-independent (jq's `unique_by`
+  # preserves first-seen order; we don't want the test pinned to that).
+  [ "$(jq -r '.tags | sort | join(",")' "$JARVIS_HOME/test/tasks/$slug.json")" = "blocker,ops" ]
+}
+
+@test "task add --tag normalizes case (UPPERCASE → lowercase)" {
+  run _task_add_argv "noisy" --tag BLOCKER --tag Ops
+  [ "$status" -eq 0 ]
+  local slug="${lines[-1]}"
+  [ "$(jq -r '.tags | sort | join(",")' "$JARVIS_HOME/test/tasks/$slug.json")" = "blocker,ops" ]
+}
+
+@test "task add --tag rejects whitespace tags with exit 2" {
+  # `bad tag` contains a space; would never match standup's index() lookup.
+  run _task_add_argv "needs grep" --tag "bad tag"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"invalid --tag"* ]] || [[ "${stderr:-}" == *"invalid --tag"* ]]
+}

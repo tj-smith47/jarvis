@@ -18,7 +18,18 @@ source "${CLI_DIR}/lib/task/store.sh"
 source "${CLI_DIR}/lib/state/config.sh"
 
 if ! declare -p CLIFT_FLAGS >/dev/null 2>&1; then
-  declare -A CLIFT_FLAGS=()
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/runtime/standalone_argv.sh"
+  jarvis_standalone_argv_parse \
+    '[{"name":"all","type":"bool"},
+      {"name":"priority","type":"string"},
+      {"name":"project","type":"string"},
+      {"name":"due","type":"string"},
+      {"name":"jira","type":"bool"},
+      {"name":"json","type":"bool"},
+      {"name":"yaml","type":"bool"},
+      {"name":"tag","type":"list"}]' \
+    "$@"
 fi
 
 all="${CLIFT_FLAGS[all]:-}"
@@ -28,6 +39,25 @@ due="${CLIFT_FLAGS[due]:-}"
 want_json="${CLIFT_FLAGS[json]:-}"
 want_yaml="${CLIFT_FLAGS[yaml]:-}"
 want_jira="${CLIFT_FLAGS[jira]:-}"
+
+# --tag is repeatable; filter keeps a record if ANY of its tags matches ANY
+# of the supplied filter tags (`OR` semantics). Empty filter → no filtering.
+# `unique` here is for cleanliness (de-duped argv); `index/1` does a
+# substring lookup against arrays which is the membership test we want.
+tags_filter_json='[]'
+_tag_count="${CLIFT_FLAG_TAG_COUNT:-0}"
+if (( _tag_count > 0 )); then
+  _tag_lines=""
+  for _i in $(seq 1 "$_tag_count"); do
+    _var="CLIFT_FLAG_TAG_$_i"
+    _tag_lines+="${!_var}"$'\n'
+  done
+  tags_filter_json="$(printf '%s' "$_tag_lines" | jq -Rcs '
+    split("\n")
+    | map(ascii_downcase | sub("^[ \t]+"; "") | sub("[ \t]+$"; ""))
+    | map(select(length > 0))
+    | unique_by(.)')"
+fi
 
 # Pull jira-assigned issues (open + in-progress) and project them onto the
 # task record shape so the merged list filters/renders identically.
@@ -51,7 +81,8 @@ if [[ "$want_jira" == "true" ]]; then
           status:   "open",
           source:   "jira",
           url:      $row.url,
-          seq:      (1000000000 + .key)
+          seq:      (1000000000 + .key),
+          tags:     []
         })')"
   fi
 fi
@@ -99,6 +130,7 @@ records="$(jq -n \
   --arg pri "$pri" \
   --arg project "$project" \
   --arg due "$due" \
+  --argjson tags_filter "$tags_filter_json" \
   '
     ($local + $jira)
     | map(
@@ -106,6 +138,11 @@ records="$(jq -n \
         | select($pri == "" or .priority == $pri)
         | select($project == "" or .project == $project)
         | select($due == "" or .due == $due)
+        | . as $r
+        | select(
+            ($tags_filter | length) == 0
+            or any($tags_filter[]; . as $t | ($r.tags // []) | index($t) != null)
+          )
       )
     | sort_by(.seq)
   ')"
@@ -169,5 +206,9 @@ while IFS=$'\t' read -r slug desc priority due_s project_s; do
     printf '  %-24s %-6s %-40s %-10s %s\n' \
       "$slug" "$priority" "$desc" "$due_s" "$project_s"
   fi
-done < <(jq -r '.[] | [.slug, .desc, .priority, (.due // "null"), (.project // "null")] | @tsv' <<< "$records")
+done < <(jq -r '
+  .[]
+  | (if ((.tags // []) | length) > 0 then "  [" + ((.tags // []) | join(",")) + "]" else "" end) as $tag_suffix
+  | [.slug, (.desc + $tag_suffix), .priority, (.due // "null"), (.project // "null")]
+  | @tsv' <<< "$records")
 printf '\n'

@@ -228,7 +228,10 @@ esac
   _seed_heartbeat "2026-04-26T15:00:00Z"
 
   run bash "$JARVIS_DIR/cmds/doctor/doctor.sh"
-  [ "$status" -eq 0 ]
+  # Stale scheduler is a red signal post-fix: cron line is installed but
+  # the actual daemon isn't firing, so reminders silently aren't running.
+  # Doctor exits non-zero so cron / shell wrappers gate on it.
+  [ "$status" -ne 0 ]
   [[ "$output" == *"stale"* ]]
 }
 
@@ -324,10 +327,13 @@ source = "https://nope.example.com/cal.ics"
 EOF
   run --separate-stderr bash "${JARVIS_DIR}/cmds/doctor/doctor.sh" \
     --profile test --integrations-live
-  [ "$status" -eq 0 ]
+  # Live probe failure is a red signal post-fix — doctor must exit non-zero
+  # so CI / cron wrappers / shell prompts can gate on it.
+  [ "$status" -ne 0 ]
   [[ "$output" == *"Live probes"* ]]
   [[ "$output" == *"calendar"* ]]
   [[ "$output" == *"ics"* ]]
+  [[ "$output" == *"probe exited"* ]]
   # The curl stderr should bubble through to the user.
   [[ "$stderr" == *"HTTP error"* ]] || [[ "$output" == *"probe exited"* ]]
 }
@@ -385,7 +391,10 @@ EOF
 provider = "bogus"
 EOF
   run bash "${JARVIS_DIR}/cmds/doctor/doctor.sh" --profile test
-  [ "$status" -eq 0 ]
+  # Unknown provider is a red signal post-fix — the dispatcher returns
+  # exit 0 with empty stdout for unknown providers (every brief / standup
+  # silently drops calendar), so doctor exits non-zero to surface the typo.
+  [ "$status" -ne 0 ]
   [[ "$output" == *"calendar"* ]]
   [[ "$output" == *"unknown provider"* ]]
   [[ "$output" == *"bogus"* ]]
@@ -486,4 +495,25 @@ EOF
   run bash "$JARVIS_DIR/cmds/doctor/doctor.sh" --reap-focus-orphans
   [ "$status" -eq 0 ]
   [[ "$output" == *"reaped 0 orphan"* ]]
+}
+
+@test "doctor: state.version corrupt is RED (exit 1)" {
+  mkdir -p "$JARVIS_HOME/test"
+  printf 'not-a-number\n' > "$JARVIS_HOME/test/state.version"
+  run bash "$JARVIS_DIR/cmds/doctor/doctor.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"corrupt"* ]]
+}
+
+@test "doctor: optional bin (dasel/rg/glow/task) missing is WARN (exit 0)" {
+  # Mask optional bins via PATH restriction; jq/curl/git remain on PATH so
+  # the required bin check stays green.
+  mkdir -p "$JARVIS_HOME/test"
+  printf '1\n' > "$JARVIS_HOME/test/state.version"
+  shim_setup
+  PATH="$SHIM_DIR:/usr/local/bin:/usr/bin:/bin" \
+    run bash "$JARVIS_DIR/cmds/doctor/doctor.sh"
+  # Even with dasel/rg/glow/task missing, doctor stays exit 0.
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"optional"* ]] || [[ "$output" == *"⚠"* ]]
 }

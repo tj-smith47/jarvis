@@ -59,10 +59,17 @@ task_store_next_seq() {
   '
 }
 
-# task_store_build <slug> <desc> <priority> <due> <project> <seq> <jira_key>
-# Empty due/jira_key → JSON null. Emits one JSON object.
+# task_store_build <slug> <desc> <priority> <due> <project> <seq> <jira_key> [tags_json]
+# Empty due/jira_key → JSON null. Empty tags_json defaults to []. Emits one JSON object.
+#
+# tags_json is a literal JSON array (e.g. '["blocker","ops"]'). The 8th
+# positional is optional so existing 7-arg call sites continue to work; the
+# default `[]` keeps the schema additive and round-trip-safe with the
+# pre-tags task records on disk (readers tolerate the missing field via
+# `.tags // []`).
 task_store_build() {
   local slug="$1" desc="$2" priority="$3" due="$4" project="$5" seq="$6" jira="$7"
+  local tags_json="${8:-[]}"
   local now
   now="$(task_store_now_iso)"
   jq -n \
@@ -74,6 +81,7 @@ task_store_build() {
     --arg now "$now" \
     --argjson seq "$seq" \
     --arg jira "$jira" \
+    --argjson tags "$tags_json" \
     '{
       slug: $slug,
       desc: $desc,
@@ -85,7 +93,8 @@ task_store_build() {
       updated_at: $now,
       done_at: null,
       seq: $seq,
-      jira_key: (if $jira == "" or $jira == "null" then null else $jira end)
+      jira_key: (if $jira == "" or $jira == "null" then null else $jira end),
+      tags: $tags
     }'
 }
 

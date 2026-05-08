@@ -88,3 +88,32 @@ gh_prs_merged_since() {
        additions, deletions}
   '
 }
+
+# Created-by-me-since: PRs the current user authored that opened in
+# [since, now], excluding ones that already merged in the same window
+# (those land in gh_prs_merged_since). Used by standup yesterday to
+# surface drafts and review-pending PRs the user opened — git log catches
+# the commits but not "I opened a PR for that work yesterday".
+#   $1 — since (UTC ISO-8601)
+#   $2 — profile (unused; honored for registry contract)
+gh_prs_created_since() {
+  local since="$1" _profile="${2:-}"
+  command -v gh >/dev/null 2>&1 || return 1
+  local since_date="${since%%T*}"
+  local out
+  # `state:open` excludes already-merged ones (gh_prs_merged_since covers
+  # those); we want the opened-but-not-yet-merged delta.
+  if ! out="$(gh pr list \
+                --search "is:pr author:@me created:>=${since_date} is:open" \
+                --json number,title,url,headRepository,createdAt,isDraft)"; then
+    return 1
+  fi
+  printf '%s' "$out" | jq -c --arg since "$since" '
+    .[]
+    | select((.createdAt // "") >= $since)
+    | {number, title, url,
+       repo: (.headRepository.owner.login + "/" + .headRepository.name),
+       createdAt,
+       isDraft}
+  '
+}

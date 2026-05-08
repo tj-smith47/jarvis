@@ -2,20 +2,35 @@ version: '3'
 
 vars:
   FLAGS:
-    - {name: short,         short: s, type: bool, desc: "One-line summary instead of full brief"}
-    - {name: skip-calendar,           type: bool, desc: "Hide Calendar section"}
-    - {name: skip-prs,                type: bool, desc: "Hide PRs section"}
-    - {name: skip-jira,               type: bool, desc: "Hide Jira section"}
-    - {name: skip-deploys,            type: bool, desc: "Hide Deploys section"}
+    - {name: short,           short: s, type: bool, desc: "One-line summary instead of full brief"}
+    - {name: skip-calendar,             type: bool, desc: "Hide Calendar section"}
+    - {name: skip-prs,                  type: bool, desc: "Hide PRs section"}
+    - {name: skip-jira,                 type: bool, desc: "Hide Jira section"}
+    - {name: skip-deploys,              type: bool, desc: "Hide Deploys section"}
+    - {name: skip-oncall,               type: bool, desc: "Hide Oncall section"}
+    - {name: skip-reminders,            type: bool, desc: "Hide Reminders section"}
+    - {name: skip-focus,                type: bool, desc: "Hide Focus-yesterday line"}
+    - {name: skip-tasks,                type: bool, desc: "Hide Tasks section"}
+    - {name: skip-notes,                type: bool, desc: "Hide Notes section"}
 
 tasks:
   default:
-    desc: "Morning briefing — calendar, PRs, jira, deploys, oncall"
+    desc: "Morning briefing — calendar, PRs, jira, deploys, oncall, tasks, notes"
     summary: |
-      Start-of-day dashboard backed by gh / jira / gcalcli (or ics) /
-      deploys.log / [oncall] config. Each section is hidden when its
-      backing tool / config is unavailable; --skip-* flags hide a
+      Start-of-day dashboard. Sections are hidden automatically when
+      their backing tool / config is unavailable; --skip-* flags hide a
       section explicitly.
+
+      Sections (in render order):
+        Calendar    today's events with duration + URL
+        PRs         awaiting your review (CI rollup, draft, decision, age)
+        Focus       yesterday's totals + top topic
+        Reminders   scheduled to fire later today
+        Jira        in-flight issues (priority + due + parent)
+        Deploys     recent rows from deploys.log
+        Tasks       open count + top 3 (priority/due/jira_key)
+        Oncall      primary / secondary / pager / rotation expiry
+        Notes       daily-today presence + touched-this-week count
 
       Profile is selected via the persistent --profile flag.
 
@@ -23,11 +38,17 @@ tasks:
         jarvis brief
         jarvis brief --short
         jarvis brief --skip-jira --profile work
+        jarvis brief --skip-tasks --skip-notes
     vars:
       FLAGS:
-        - {name: short,         short: s, type: bool, desc: "One-line summary instead of full brief"}
-        - {name: skip-calendar,           type: bool, desc: "Hide Calendar section"}
-        - {name: skip-prs,                type: bool, desc: "Hide PRs section"}
-        - {name: skip-jira,               type: bool, desc: "Hide Jira section"}
-        - {name: skip-deploys,            type: bool, desc: "Hide Deploys section"}
+        - {name: short,           short: s, type: bool, desc: "One-line summary instead of full brief"}
+        - {name: skip-calendar,             type: bool, desc: "Hide Calendar section"}
+        - {name: skip-prs,                  type: bool, desc: "Hide PRs section"}
+        - {name: skip-jira,                 type: bool, desc: "Hide Jira section"}
+        - {name: skip-deploys,              type: bool, desc: "Hide Deploys section"}
+        - {name: skip-oncall,               type: bool, desc: "Hide Oncall section"}
+        - {name: skip-reminders,            type: bool, desc: "Hide Reminders section"}
+        - {name: skip-focus,                type: bool, desc: "Hide Focus-yesterday line"}
+        - {name: skip-tasks,                type: bool, desc: "Hide Tasks section"}
+        - {name: skip-notes,                type: bool, desc: "Hide Notes section"}
     cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

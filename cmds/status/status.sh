@@ -100,7 +100,7 @@ if [[ -d "$profile_dir/tasks" ]]; then
          top: ($open
                 | sort_by(.priority // "med", .created_at // "")
                 | .[:3]
-                | map({slug, title: (.title // .slug // "(untitled)")}))}' \
+                | map({slug, title: (.desc // .slug // "(untitled)")}))}' \
       "${task_files[@]}")"
     tasks_open="$(jq -r '.open' <<< "$rollup")"
     tasks_done_today="$(jq -r '.done_today' <<< "$rollup")"

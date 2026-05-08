@@ -106,3 +106,61 @@ run_edit() {
   run run_edit nope "" high
   [ "$status" -eq 1 ]
 }
+
+# Helper for tag-flag tests — runs edit via the standalone parser path.
+_task_edit_argv() {
+  FRAMEWORK_DIR="$CLIFT_FRAMEWORK_DIR" CLI_DIR="$JARVIS_DIR" \
+    bash "$JARVIS_DIR/cmds/task/task.edit.sh" "$@"
+}
+
+@test "edit --tag-add appends new tag (idempotent on dup)" {
+  seed fix-k3s
+  run _task_edit_argv fix-k3s --tag-add blocker
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.tags | join(",")' "$JARVIS_HOME/test/tasks/fix-k3s.json")" = "blocker" ]
+  # Adding the same tag again is a no-op (unique).
+  run _task_edit_argv fix-k3s --tag-add blocker
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.tags | length' "$JARVIS_HOME/test/tasks/fix-k3s.json")" = "1" ]
+}
+
+@test "edit --tag-add accepts multiple in one invocation" {
+  seed fix-k3s
+  run _task_edit_argv fix-k3s --tag-add blocker --tag-add ops
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.tags | sort | join(",")' "$JARVIS_HOME/test/tasks/fix-k3s.json")" = "blocker,ops" ]
+}
+
+@test "edit --tag-remove drops matching tags only" {
+  seed fix-k3s
+  _task_edit_argv fix-k3s --tag-add blocker --tag-add ops --tag-add release >/dev/null
+  run _task_edit_argv fix-k3s --tag-remove blocker
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.tags | sort | join(",")' "$JARVIS_HOME/test/tasks/fix-k3s.json")" = "ops,release" ]
+}
+
+@test "edit --tags-clear empties tags array" {
+  seed fix-k3s
+  _task_edit_argv fix-k3s --tag-add blocker --tag-add ops >/dev/null
+  run _task_edit_argv fix-k3s --tags-clear
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.tags | length' "$JARVIS_HOME/test/tasks/fix-k3s.json")" = "0" ]
+}
+
+@test "edit --tag-add on legacy task (no tags field) defaults to []" {
+  # Hand-write a record missing the tags field — simulates pre-schema-bump
+  # tasks that may exist on disk after upgrade.
+  jq -n '{slug:"legacy", desc:"old", status:"open", priority:"med", due:null,
+          project:"inbox", created_at:"2026-04-20T00:00:00Z",
+          updated_at:"2026-04-20T00:00:00Z", done_at:null, seq:1, jira_key:null}' \
+    > "$JARVIS_HOME/test/tasks/legacy.json"
+  run _task_edit_argv legacy --tag-add blocker
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.tags | join(",")' "$JARVIS_HOME/test/tasks/legacy.json")" = "blocker" ]
+}
+
+@test "edit --tag-add rejects invalid tag with exit 2" {
+  seed fix-k3s
+  run _task_edit_argv fix-k3s --tag-add "bad tag"
+  [ "$status" -eq 2 ]
+}

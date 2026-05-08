@@ -190,14 +190,17 @@ fi'
 }
 
 @test "yesterday surfaces tasks closed in the standup window" {
-  # Drop a done-yesterday task into the fixture profile.
+  # Drop a done-yesterday task into the fixture profile. Schema field is
+  # `desc` (the task store's canonical field) — pre-fix this seed used
+  # `title`, which task-store writers don't emit, so renders silently fell
+  # through to slug.
   jq -nc \
-    '{slug:"shipped",title:"shipped audit doc",status:"done",
+    '{slug:"shipped",desc:"shipped audit doc",status:"done",
       done_at:"2026-04-30T17:00:00Z",created_at:"2026-04-29T10:00:00Z"}' \
     > "$JARVIS_HOME/test/tasks/shipped.json"
   # And a task closed long before the window — must NOT appear.
   jq -nc \
-    '{slug:"old",title:"old work",status:"done",
+    '{slug:"old",desc:"old work",status:"done",
       done_at:"2026-04-01T10:00:00Z",created_at:"2026-03-01T10:00:00Z"}' \
     > "$JARVIS_HOME/test/tasks/old.json"
   run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
@@ -220,17 +223,25 @@ EOF
   [[ "$output" == *"focus: 1h 30m"*"jarvis-audit"* ]]
 }
 
-@test "yesterday surfaces count of reminders that fired in window" {
+@test "yesterday surfaces fired reminders as a list (not bare count)" {
   # Two delivered, one failed (filtered), one outside the window (filtered).
+  # Pre-fix the renderer collapsed these to "$N reminders fired" — the
+  # detail (when, what, on which channels) was buried in notify.log even
+  # though the standup audience usually wants exactly that.
   cat > "$JARVIS_HOME/test/notify.log" <<EOF
-{"ts":"2026-04-30T10:00:00Z","channel":"local","ok":true,"message":"a"}
-{"ts":"2026-04-30T15:00:00Z","channel":"local","ok":true,"message":"b"}
-{"ts":"2026-04-30T16:00:00Z","channel":"local","ok":false,"message":"c","error":"fail"}
+{"ts":"2026-04-30T10:00:00Z","channel":"local","ok":true,"message":"deploy notice"}
+{"ts":"2026-04-30T15:00:00Z","channel":"local","ok":true,"message":"standup soon"}
+{"ts":"2026-04-30T16:00:00Z","channel":"local","ok":false,"message":"oops","error":"fail"}
 {"ts":"2026-04-01T10:00:00Z","channel":"local","ok":true,"message":"old"}
 EOF
   run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
   [ "$status" -eq 0 ]
-  [[ "$output" == *"2 reminders fired"* ]]
+  # Each delivered message renders as its own row with channel(s).
+  [[ "$output" == *"deploy notice"*"[local]"* ]]
+  [[ "$output" == *"standup soon"*"[local]"* ]]
+  # Out-of-window + failed rows are filtered.
+  [[ "$output" != *"oops"* ]]
+  [[ "$output" != *"old"* ]]
 }
 
 @test "today's meetings render as their own section after Today" {
@@ -304,4 +315,118 @@ EOF
   [[ "$output" == *"auth broken (1d)"* ]]
   # Excerpt skips frontmatter + headings, picks the first prose line
   [[ "$output" == *"can't push to staging"* ]]
+}
+
+@test "blockers: open task tagged 'blocker' surfaces in standup" {
+  # Task-side blockers were silently dropped before the tags-schema land —
+  # standup only scanned notes. Now an open task with tag=blocker shows
+  # alongside note blockers under the same Blockers section.
+  jq -nc '{slug:"freeze-investigate", desc:"investigate cluster freeze",
+           status:"open", priority:"high", due:null, project:"inbox",
+           created_at:"2026-04-29T10:00:00Z",
+           updated_at:"2026-04-30T15:00:00Z",
+           done_at:null, seq:1, jira_key:null,
+           tags:["blocker"]}' \
+    > "$JARVIS_HOME/test/tasks/freeze-investigate.json"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Blockers"* ]]
+  [[ "$output" == *"investigate cluster freeze"* ]]
+}
+
+@test "blockers: open task without 'blocker' tag is NOT surfaced" {
+  jq -nc '{slug:"unrelated", desc:"unrelated work", status:"open",
+           priority:"med", due:null, project:"inbox",
+           created_at:"2026-04-29T10:00:00Z", updated_at:"2026-04-30T15:00:00Z",
+           done_at:null, seq:1, jira_key:null, tags:["release"]}' \
+    > "$JARVIS_HOME/test/tasks/unrelated.json"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"unrelated work"*"Blockers"* ]] || true  # never under Blockers
+}
+
+@test "blockers: done task tagged 'blocker' is NOT surfaced under Blockers" {
+  # A closed-yesterday blocker correctly DOES appear under yesterday's
+  # tasks-shipped section ("✓ resolved blocker") — this test only asserts
+  # it's not surfaced under the active Blockers heading.
+  jq -nc '{slug:"resolved", desc:"resolved blocker", status:"done",
+           priority:"high", due:null, project:"inbox",
+           created_at:"2026-04-29T10:00:00Z", updated_at:"2026-04-30T15:00:00Z",
+           done_at:"2026-04-30T16:00:00Z", seq:1, jira_key:null,
+           tags:["blocker"]}' \
+    > "$JARVIS_HOME/test/tasks/resolved.json"
+  # Strip notes-side blockers from the fixture so the Blockers section
+  # is gated only by tasks; otherwise a note-blocker would mask the assertion.
+  echo '{"version":1,"notes":[]}' > "$JARVIS_HOME/test/notes/index.json"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  # Walk just the Blockers section (heading → blank line). With notes
+  # cleared and the closed task filtered, that section reads "(none)".
+  blockers_section="$(printf '%s\n' "$output" | awk '/Blockers/,/^$/')"
+  [[ "$blockers_section" == *"(none)"* ]]
+  [[ "$blockers_section" != *"resolved blocker"* ]]
+}
+
+@test "today: open tasks render priority + due + jira_key suffixes" {
+  # Pre-fix the renderer reached for `.title` (doesn't exist) and dropped
+  # priority / due / jira_key even though every record carries them.
+  jq -nc '{slug:"ship-it", desc:"ship the migration", status:"open",
+           priority:"high", due:"2026-05-09", project:"release",
+           created_at:"2026-04-30T10:00:00Z", updated_at:"2026-04-30T10:00:00Z",
+           done_at:null, seq:1, jira_key:"PLAT-456", tags:[]}' \
+    > "$JARVIS_HOME/test/tasks/ship-it.json"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ship the migration"* ]]
+  [[ "$output" == *"[high]"* ]]
+  [[ "$output" == *"due 2026-05-09"* ]]
+  [[ "$output" == *"PLAT-456"* ]]
+}
+
+@test "yesterday: closed task carries jira_key suffix" {
+  jq -nc '{slug:"shipped-jira", desc:"ship migration", status:"done",
+           priority:"med", due:null, project:"release",
+           created_at:"2026-04-29T10:00:00Z", updated_at:"2026-04-30T16:00:00Z",
+           done_at:"2026-04-30T17:00:00Z", seq:1, jira_key:"PLAT-789", tags:[]}' \
+    > "$JARVIS_HOME/test/tasks/shipped-jira.json"
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"✓"*"ship migration"* ]]
+  [[ "$output" == *"PLAT-789"* ]]
+}
+
+@test "yesterday: created-but-unmerged PRs render with 📝 prefix" {
+  # gh shim: created PR 99, draft.
+  shim_install gh '
+case "$1 $2" in
+  "auth status") exit 0 ;;
+  "pr list")
+    case "$*" in
+      *"is:merged"*) printf "[]\n" ;;
+      *"is:open"*"created"*)
+        cat <<JSON
+[{"number":99,"title":"feat: draft handoff","url":"https://github.com/acme/widgets/pull/99","headRepository":{"name":"widgets","owner":{"login":"acme"}},"createdAt":"2026-04-30T11:00:00Z","isDraft":true}]
+JSON
+        ;;
+      *) printf "[]\n" ;;
+    esac ;;
+esac'
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"📝"* ]]
+  [[ "$output" == *"[DRAFT]"* ]]
+  [[ "$output" == *"acme/widgets#99"* ]]
+  [[ "$output" == *"feat: draft handoff"* ]]
+}
+
+@test "standup --all-repos warns when [standup] repos config absent" {
+  # Pre-fix --all-repos silently no-op'd to cwd when repos= was unset; user
+  # got the wrong scan and never knew the flag wasn't honored. Now the
+  # silence is visible: stderr explains the fallback so the user can fix
+  # the config (or stop passing --all-repos).
+  run --separate-stderr bash "${JARVIS_DIR}/cmds/standup/standup.sh" \
+    --all-repos --since 1d --profile test
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"--all-repos"* ]]
+  [[ "$stderr" == *"[standup] repos not set"* ]] || [[ "$stderr" == *"falling back to cwd"* ]]
 }

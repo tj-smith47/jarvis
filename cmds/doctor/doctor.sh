@@ -104,13 +104,23 @@ fi
 
 printf '%-15s %-20s %s\n' "profile" "${JARVIS_PROFILE:-default}" "state at $state_dir"
 
+# Red counter — incremented for any signal that warrants a non-zero exit
+# (so `jarvis doctor` can gate CI on broken state). Conservative definition:
+# state corruption, missing REQUIRED bin, scheduler installed-but-stale,
+# calendar typo, and live-probe failures count as red. Missing optional
+# bins / integrations are surfaced with a yellow warn marker and a fix hint
+# but do NOT contribute to red — the user has opted out by not configuring
+# them.
+_doctor_red=0
+
 if [[ -f "$state_dir/state.version" ]]; then
   schema_raw="$(< "$state_dir/state.version")"
   if [[ "$schema_raw" =~ ^[0-9]+$ ]]; then
     printf '%-15s %-20s %s\n' "state schema" "v$schema_raw" "up to date"
   else
-    printf '⚠ %-13s %-20s %s\n' "state schema" "corrupt" \
+    printf '\u2717 %-13s %-20s %s\n' "state schema" "corrupt" \
       "state.version is not a number — delete and re-run any jarvis command"
+    _doctor_red=$((_doctor_red + 1))
   fi
 else
   printf '%-15s %-20s %s\n' "state schema" "uninitialized" "run any jarvis command once to initialize"
@@ -124,12 +134,29 @@ probe_version() {
   esac
 }
 
-for bin in jq dasel rg glow task curl git; do
+# REQUIRED bins — jarvis cannot function without these. jq is used in every
+# integration; curl is needed for gotify/slack notify channels; git underlies
+# standup. A missing required bin is RED.
+for bin in jq curl git; do
   if command -v "$bin" >/dev/null 2>&1; then
     ver="$(probe_version "$bin" || true)"
     printf '\u2713 %-13s %-20s %s\n' "$bin" "$ver" "available"
   else
-    printf '\u2717 %-13s %-20s %s\n' "$bin" "missing" "install $bin"
+    printf '\u2717 %-13s %-20s %s\n' "$bin" "missing" "install $bin (required)"
+    _doctor_red=$((_doctor_red + 1))
+  fi
+done
+
+# OPTIONAL bins — degrade gracefully when missing. dasel is needed for
+# array-shaped TOML reads (standup --all-repos); rg / glow speed up notes
+# search/render but grep / cat substitute; task is the clift router driver
+# but standalone scripts work without it. Missing → warn, no red contribution.
+for bin in dasel rg glow task; do
+  if command -v "$bin" >/dev/null 2>&1; then
+    ver="$(probe_version "$bin" || true)"
+    printf '\u2713 %-13s %-20s %s\n' "$bin" "$ver" "available"
+  else
+    printf '\u26a0 %-13s %-20s %s\n' "$bin" "missing" "install $bin (optional)"
   fi
 done
 
@@ -191,6 +218,9 @@ _doctor_format_age() {
   fi
 }
 
+# Emits the scheduler line on stdout and returns 1 when stale (so the
+# caller can increment _doctor_red \u2014 modifying it inside this function
+# would die with the $(...) subshell that captures stdout).
 _doctor_scheduler_line() {
   local backend="$1" log="$2"
   local installed=1 last_iso last_e now_e age
@@ -211,8 +241,11 @@ _doctor_scheduler_line() {
     now_e="$(_doctor_now_epoch)"
     age=$((now_e - last_e))
     if (( age > 300 )); then
+      # Stale tick = scheduler installed but not actually running. Red:
+      # the user thinks reminders are firing but they aren't.
       printf '%s installed but stale \u2014 last tick %s \u2014 is the scheduler running?\n' \
         "$backend" "$(_doctor_format_age "$age")"
+      return 1
     else
       printf '%s installed (last tick %s)\n' "$backend" "$(_doctor_format_age "$age")"
     fi
@@ -224,13 +257,16 @@ _doctor_scheduler_line() {
 _doctor_render_reminders() {
   local dir="$1"
   local log="$dir/reminders.delivery.log"
-  local pending active delivered failed backend sched_line
+  local pending active delivered failed backend sched_line sched_rc=0
   pending="$(_doctor_count_status "$dir" pending)"
   active="$(_doctor_count_status "$dir" active)"
   delivered="$(_doctor_count_delivery "$log" '.ok == true')"
   failed="$(_doctor_count_delivery "$log" '.ok == false')"
   backend="$(config_get scheduler.backend cron)"
-  sched_line="$(_doctor_scheduler_line "$backend" "$log")"
+  # Capture rc separately because the $(...) subshell can't propagate a
+  # _doctor_red increment back to the parent. `sched_line` carries the
+  # display string; `sched_rc` becomes 1 iff the scheduler reports stale.
+  sched_line="$(_doctor_scheduler_line "$backend" "$log")" || sched_rc=$?
 
   printf '\nreminders:\n'
   printf '  pending     %s\n' "$pending"
@@ -238,9 +274,11 @@ _doctor_render_reminders() {
   printf '  delivered   %s\n' "$delivered"
   printf '  failed      %s\n' "$failed"
   printf '  scheduler   %s\n' "$sched_line"
+
+  return "$sched_rc"
 }
 
-_doctor_render_reminders "$state_dir"
+_doctor_render_reminders "$state_dir" || _doctor_red=$((_doctor_red + 1))
 
 # --- Integrations rollup ---
 # Config + cache-mtime driven; no network calls. Calendar provider name comes
@@ -294,8 +332,13 @@ elif [[ "$cal_raw" == "none" ]]; then
   printf "    calendar       disabled  (provider = 'none' in %s)\n" "$cfg"
 elif ! declare -F "calendar_${cal_raw}_events" >/dev/null 2>&1 \
    && [[ -z "${_CALENDAR_PROVIDERS[$cal_raw]:-}" ]]; then
+  # Unknown provider = user typo in config.toml. Red because the user
+  # thinks calendar is wired and it silently isn't (the dispatcher returns
+  # exit 0 with empty stdout for unknown providers — every brief / standup
+  # silently drops the calendar section).
   registered="$(calendar_providers | paste -sd, - 2>/dev/null || true)"
   printf "    calendar       %s  unknown provider (registered: %s)\n" "$cal_raw" "$registered"
+  _doctor_red=$((_doctor_red + 1))
 else
   cal_cache="$state_dir/cache/calendar.json"
   if [[ -f "$cal_cache" ]]; then
@@ -364,6 +407,7 @@ if [[ "$live_flag" == "true" ]]; then
     fn="calendar_${cal_provider}_events"
     if ! declare -F "$fn" >/dev/null; then
       printf '    calendar       %s  unknown provider (no registered fn)\n' "$cal_provider"
+      _doctor_red=$((_doctor_red + 1))
     else
       cal_rc=0
       cal_out="$("$fn" "$day_start" "$day_end" "$profile")" || cal_rc=$?
@@ -372,7 +416,10 @@ if [[ "$live_flag" == "true" ]]; then
       if (( cal_rc == 0 )); then
         printf '    calendar       %s  %d events today\n' "$cal_provider" "$cal_count"
       else
+        # Live probe failure: provider configured + invoked + returned non-zero.
+        # That's a misconfig the user should know about (red).
         printf '    calendar       %s  probe exited %d (see stderr above)\n' "$cal_provider" "$cal_rc"
+        _doctor_red=$((_doctor_red + 1))
       fi
     fi
   fi
@@ -389,6 +436,7 @@ if [[ "$live_flag" == "true" ]]; then
       printf '    gh             %d PRs awaiting review\n' "$gh_count"
     else
       printf '    gh             probe exited %d (see stderr above)\n' "$gh_rc"
+      _doctor_red=$((_doctor_red + 1))
     fi
   else
     printf '    gh             missing\n'
@@ -406,6 +454,7 @@ if [[ "$live_flag" == "true" ]]; then
       printf '    jira           %d in flight\n' "$jr_count"
     else
       printf '    jira           probe exited %d (see stderr above)\n' "$jr_rc"
+      _doctor_red=$((_doctor_red + 1))
     fi
   else
     printf '    jira           missing\n'
@@ -429,9 +478,24 @@ if [[ -f "$focus_log" ]]; then
   if (( orphan_count == 0 )); then
     printf '\u2713 %-13s %-20s %s\n' "focus.log" "0 orphan rows" "clean"
   else
+    # Orphan rows are recoverable via --reap-focus-orphans; surface as warn
+    # rather than red so the user can fix it without doctor blocking CI.
     printf '\u26a0 %-13s %-20s %s\n' "focus.log" "$orphan_count orphan rows" \
       "run \`jarvis doctor --reap-focus-orphans\` to synthesize end rows"
   fi
 else
   printf '\u2713 %-13s %-20s %s\n' "focus.log" "no log yet" "no focus sessions recorded"
 fi
+
+# Exit non-zero if any red signal fired so this command can gate CI / cron
+# wrappers / shell prompts. Conservative red count means a fully-default
+# profile with no integrations configured still exits 0; only actively
+# broken state (corrupt schema, missing required bin, scheduler stale,
+# calendar typo, live probe fail) trips the gate.
+if (( _doctor_red > 0 )); then
+  if declare -F log_warn >/dev/null 2>&1; then
+    log_warn "doctor: $_doctor_red red signal$( (( _doctor_red == 1 )) || printf 's' ) \u2014 see \u2717 rows above"
+  fi
+  exit 1
+fi
+exit 0

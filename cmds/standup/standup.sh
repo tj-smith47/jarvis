@@ -117,12 +117,25 @@ since_iso="$(native_epoch_to_iso "$since_epoch")"
 
 # ----------------------------------------------------------- repo list
 # --all-repos overrides --repo. Otherwise fall back to --repo, then cwd.
+#
+# Pre-fix --all-repos silently no-op'd to `cwd` when dasel was missing or
+# the config didn't have `[standup] repos = [...]` — the user got the
+# wrong scan and never knew the flag wasn't honored. Now each failure
+# mode explains itself on stderr (one-shot per process). The fallback
+# behavior stays the same (broader silence is worse than the old wrong
+# answer); this is just to make the silence visible.
 git_repos=()
 if [[ "$all_repos" == "true" ]]; then
   cfg="$profile_dir/config.toml"
-  if [[ -f "$cfg" ]] && command -v dasel >/dev/null 2>&1; then
+  if [[ ! -f "$cfg" ]]; then
+    printf 'standup: --all-repos: no config.toml at %s; falling back to cwd\n' "$cfg" >&2
+  elif ! command -v dasel >/dev/null 2>&1; then
+    printf 'standup: --all-repos: dasel not on PATH (needed to read [standup] repos); falling back to cwd\n' >&2
+  else
     repos_json="$(dasel -i toml -o json standup.repos < "$cfg" 2>/dev/null || true)"
-    if [[ -n "$repos_json" && "$repos_json" != "null" ]]; then
+    if [[ -z "$repos_json" || "$repos_json" == "null" ]]; then
+      printf 'standup: --all-repos: [standup] repos not set in %s; falling back to cwd\n' "$cfg" >&2
+    else
       while IFS= read -r r; do
         [[ -n "$r" ]] && git_repos+=("$r")
       done < <(jq -r '.[]?' <<< "$repos_json" 2>/dev/null)
@@ -213,10 +226,26 @@ jira_comments="$(_silence jira_my_comments_since "$since_iso" "$profile" || true
 # local history.
 yesterday_merged_prs="$(_silence gh_prs_merged_since "$since_iso" "$profile" || true)"
 
+# ----------------------------------------------------------- yesterday: created PRs
+# PRs I opened in the standup window — drafts and review-pending. git
+# log records the commits, but a standup needs the PR ref so the audience
+# can click through. State:open scoping prevents double-counting with
+# gh_prs_merged_since (created-and-merged in the same window lands in
+# the merged section only).
+yesterday_created_prs="$(_silence gh_prs_created_since "$since_iso" "$profile" || true)"
+
 # ----------------------------------------------------------- yesterday: tasks closed
 # Tasks marked done in [since_iso, now_iso] never appeared in the yesterday
 # narrative — only git commits + jira comments did. Adding closed tasks
 # rounds out "what I shipped" beyond just code.
+#
+# Field surface: pre-fix the renderer reached for `.title` first, which
+# doesn't exist on task records (the store uses `.desc`) — every row
+# silently fell back to `.slug`. Now `.desc` is primary, and the `jira_key`
+# is appended so a closed task linked to a ticket renders the ticket too
+# (the standup audience can click through to the resolution context).
+# `due` is intentionally dropped here — once done, the future-orientation
+# field is no longer informative.
 yesterday_tasks_done=""
 if [[ -d "$profile_dir/tasks" ]]; then
   shopt -s nullglob
@@ -229,7 +258,8 @@ if [[ -d "$profile_dir/tasks" ]]; then
                      and (.done_at // "") <= $n) ]
       | sort_by(.done_at)
       | .[]
-      | "- ✓ " + (.title // .slug // "(untitled)")
+      | "- ✓ " + (.desc // .slug // "(untitled)") +
+        (if (.jira_key // "") != "" and .jira_key != "null" then "  \(.jira_key)" else "" end)
     ' "${_yt_files[@]}" 2>/dev/null || true)"
   fi
 fi
@@ -270,22 +300,42 @@ fi
 # notify.log carries every channel-attempt row. Successfully-delivered
 # reminders in the standup window are part of "what happened" — without
 # this surface the user has to `cat notify.log` to know what fired.
+#
+# Pre-fix this rendered a bare "- 5 reminders fired" count. The detail
+# (what fired, when, on which channels) was buried in the log even though
+# the standup audience usually wants exactly that ("you got pinged about
+# the deploy at 09:30"). Now we render a deduped list of distinct
+# (message, channels) rows: same message delivered via two channels
+# coalesces to one row with channels comma-joined.
 yesterday_reminders_fired=""
 notify_log="$profile_dir/notify.log"
 if [[ -f "$notify_log" ]]; then
-  _yr_count="$(jq -rs --arg s "$since_iso" --arg n "$now_iso" '
+  yesterday_reminders_fired="$(jq -rs --arg s "$since_iso" --arg n "$now_iso" '
     [ .[] | select((.ok // false) == true
                    and (.ts // "") >= $s
                    and (.ts // "") <= $n
                    and (.channel // "") != "tick.heartbeat") ]
-    | length
-  ' < "$notify_log" 2>/dev/null || printf '0')"
-  if [[ "${_yr_count:-0}" -gt 0 ]]; then
-    yesterday_reminders_fired="- $_yr_count reminder$([[ "$_yr_count" -ne 1 ]] && printf s) fired"
-  fi
+    | sort_by(.ts)
+    | group_by(.message)
+    | map({
+        ts:        (map(.ts) | min),
+        message:   (.[0].message // ""),
+        channels:  (map(.channel) | unique | join(","))
+      })
+    | sort_by(.ts)
+    | .[]
+    | "- " + (.ts | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
+      "  " + (if .message == "" then "(no message)" else .message end) +
+      "  [" + .channels + "]"
+  ' < "$notify_log" 2>/dev/null || true)"
 fi
 
 # ----------------------------------------------------------- today: tasks
+# Same field-surface bugs as yesterday_tasks_done: pre-fix the renderer
+# reached for `.title` (doesn't exist) and dropped priority/due/jira_key
+# even though every record carries them. Today's view also gets a
+# priority-rank sort so high-priority bubbles to the top of the standup
+# (med→low is the tiebreaker via `.seq`).
 open_tasks=""
 if [[ -d "$profile_dir/tasks" ]]; then
   shopt -s nullglob
@@ -293,7 +343,18 @@ if [[ -d "$profile_dir/tasks" ]]; then
   shopt -u nullglob
   if (( ${#task_files[@]} > 0 )); then
     open_tasks="$(jq -rs '
-      .[] | select((.status // "open") == "open") | "- " + (.title // .slug // "(untitled)")
+      def pri_rank: if .priority == "high" then 0
+                    elif .priority == "med" then 1
+                    elif .priority == "low" then 2
+                    else 3 end;
+      [ .[] | select((.status // "open") == "open") ]
+      | sort_by(pri_rank, .seq)
+      | .[]
+      | "- " + (.desc // .slug // "(untitled)") +
+        (if (.priority // "") != "" and .priority != "null" and .priority != "med"
+          then "  [\(.priority)]" else "" end) +
+        (if (.due // "") != "" and .due != "null" then "  due \(.due)" else "" end) +
+        (if (.jira_key // "") != "" and .jira_key != "null" then "  \(.jira_key)" else "" end)
     ' "${task_files[@]}")"
     [[ -n "$open_tasks" ]] && open_tasks+=$'\n'
   fi
@@ -335,16 +396,13 @@ fi
 # Pre-fix the blocker scan was filtered by `updated_at >= since_iso`, which
 # meant a blocker that had been real for 5 days but received no recent edit
 # silently dropped out of the standup view — the exact opposite of what the
-# section is for. Now we list every active (non-archived) blocker note
-# regardless of recency, and render an age suffix so the reader can tell
-# which ones are stale.
+# section is for. Now we list every active (non-archived) blocker note +
+# every open task tagged 'blocker' regardless of recency, and render an age
+# suffix so the reader can tell which ones are stale.
 #
 # Each row also carries a body excerpt so the title isn't the only context
 # (titles like "auth broken" force you to re-open the note to remember
 # what's actually broken).
-#
-# Task store does not carry a `tags` field today, so task-side blockers
-# are NOT scanned here — that needs a schema decision before it can land.
 _blocker_excerpt() {
   local f="$1"
   [[ -f "$f" ]] || return 0
@@ -398,10 +456,44 @@ if [[ -f "$profile_dir/notes/index.json" ]]; then
         [[ -n "$excerpt" ]] && blockers+="    ${excerpt}"$'\n'
       fi
     done <<< "$blocker_tsv"
-    # Trim trailing newline so the consumer sed can prefix uniformly.
-    blockers="${blockers%$'\n'}"
   fi
 fi
+
+# Task-side blockers: open tasks tagged 'blocker'. Mirrors the notes
+# section's age-suffix shape so the reader can't tell whether the source
+# is a note or a task — which is the right level of abstraction; what
+# matters is "this is blocking me, here's how stale it is". The desc
+# itself is shown (no excerpt — task store has no body field beyond desc).
+if [[ -d "$profile_dir/tasks" ]]; then
+  shopt -s nullglob
+  _blk_files=( "$profile_dir/tasks"/*.json )
+  shopt -u nullglob
+  if (( ${#_blk_files[@]} > 0 )); then
+    blocker_tasks="$(jq -rs --arg now "$now_iso" '
+      def age_str:
+        if (.updated_at // "") != "" then
+          (($now | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) -
+           (.updated_at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) as $secs
+          | if    $secs < 60     then ""
+            elif  $secs < 3600   then " (\($secs / 60   | floor)m)"
+            elif  $secs < 86400  then " (\($secs / 3600 | floor)h)"
+            else                      " (\($secs / 86400 | floor)d)" end
+        else "" end;
+      [ .[]
+        | select((.status // "open") == "open"
+                 and ((.tags // []) | index("blocker"))) ]
+      | sort_by(.seq)
+      | .[]
+      | "- " + (.desc // .slug // "(untitled)") + age_str
+    ' "${_blk_files[@]}" 2>/dev/null || true)"
+    if [[ -n "$blocker_tasks" ]]; then
+      blockers+="$blocker_tasks"$'\n'
+    fi
+  fi
+fi
+
+# Trim trailing newline so the consumer sed can prefix uniformly.
+blockers="${blockers%$'\n'}"
 
 # ----------------------------------------------------------- --join / --meeting
 # Runs before the render block so the meeting opens first, then the standup
@@ -494,6 +586,14 @@ if [[ -n "$yesterday_merged_prs" ]]; then
     "    - 🚀 " + .repo + "#" + (.number|tostring) + "  " + .title'
   had_yesterday=1
 fi
+if [[ -n "$yesterday_created_prs" ]]; then
+  # 📝 distinguishes opened-but-not-yet-merged PRs from shipped ones; draft
+  # PRs carry a [DRAFT] marker since reviewers shouldn't act on them yet.
+  printf '%s\n' "$yesterday_created_prs" | jq -r '
+    "    - 📝 " + (if .isDraft then "[DRAFT] " else "" end) +
+    .repo + "#" + (.number|tostring) + "  " + .title'
+  had_yesterday=1
+fi
 if [[ -n "$yesterday_tasks_done" ]]; then
   printf '%s\n' "$yesterday_tasks_done" | sed 's/^/    /'
   had_yesterday=1
@@ -503,7 +603,7 @@ if [[ -n "$yesterday_focus" ]]; then
   had_yesterday=1
 fi
 if [[ -n "$yesterday_reminders_fired" ]]; then
-  printf '    %s\n' "$yesterday_reminders_fired"
+  printf '%s\n' "$yesterday_reminders_fired" | sed 's/^/    /'
   had_yesterday=1
 fi
 (( had_yesterday == 0 )) && printf '    (none)\n'

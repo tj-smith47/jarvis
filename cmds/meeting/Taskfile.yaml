@@ -1,0 +1,45 @@
+version: '3'
+
+vars:
+  FLAGS: []
+
+tasks:
+  join:
+    desc: "Open the next meeting URL in the configured browser/app"
+    summary: |
+      Scans your calendar for the next event in the search window, extracts
+      its meeting URL (Zoom / Meet / Teams / explicit `.url` field), and
+      opens it via `open` (macOS) / `xdg-open` (Linux). Prints the URL when
+      neither opener is available so you can paste it.
+
+      Window defaults to the next 15 min; --in extends it (e.g. --in 30m).
+      --filter <regex> narrows by title (case-insensitive). --meeting
+      <url> bypasses calendar lookup entirely.
+
+      Examples:
+        jarvis meeting join                    # next 15m, any event
+        jarvis meeting join --in 30m           # widen window
+        jarvis meeting join --filter standup   # only standup events
+        jarvis meeting join --meeting https://zoom.us/j/12345
+    vars:
+      FLAGS:
+        - {name: in,      type: string, default: 15m, desc: "Search window (e.g. 5m, 30m, 2h)"}
+        - {name: filter,  type: string, desc: "Title regex (case-insensitive)"}
+        - {name: meeting, type: string, desc: "Explicit URL — skip calendar lookup"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
+
+  next:
+    desc: "Show the next upcoming meeting (time, title, URL, countdown)"
+    summary: |
+      One-line peek at what's coming up. --in widens the search window
+      from the default 1d. --json emits structured output.
+
+      Examples:
+        jarvis meeting next
+        jarvis meeting next --in 4h
+        jarvis meeting next --json | jq -r .url
+    vars:
+      FLAGS:
+        - {name: in,   type: string, default: 1d,   desc: "Search window (e.g. 30m, 2h, 1d)"}
+        - {name: json, type: bool,                  desc: "Emit structured JSON"}
+    cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

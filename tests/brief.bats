@@ -200,3 +200,97 @@ esac'
   # Row 3: changes-requested, CI failing
   [[ "$output" == *"o/r#44"*"✗CI"*"changes-requested"* ]]
 }
+
+@test "brief Tasks section shows open count + top 3 with metadata" {
+  # Two tasks already in the fixture (write-spec, buy-milk). Add a high
+  # priority one to verify priority-rank sorting bubbles it to the top.
+  jq -nc '{slug:"urgent-fix", desc:"urgent fix",
+           status:"open", priority:"high", due:"today", project:"release",
+           created_at:"2026-04-30T10:00:00Z", updated_at:"2026-04-30T10:00:00Z",
+           done_at:null, seq:99, jira_key:"PLAT-1", tags:[]}' \
+    > "$JARVIS_HOME/test/tasks/urgent-fix.json"
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Tasks"* ]]
+  [[ "$output" == *"3 open"* ]]
+  [[ "$output" == *"1 due today"* ]]
+  [[ "$output" == *"urgent fix"* ]]
+  [[ "$output" == *"[high]"* ]]
+  [[ "$output" == *"due today"* ]]
+  [[ "$output" == *"PLAT-1"* ]]
+}
+
+@test "brief Notes section shows daily-today + touched-this-week" {
+  # Seed an index with a daily note created today + 2 inbox notes touched
+  # in the last 7 days. JARVIS_FAKE_NOW=2026-05-01T15:00:00Z (set in setup).
+  mkdir -p "$JARVIS_HOME/test/notes/daily" "$JARVIS_HOME/test/notes/inbox"
+  cat > "$JARVIS_HOME/test/notes/index.json" <<EOF
+{"version":1,"notes":[
+  {"path":"notes/daily/2026-05-01.md","kind":"daily","title":"daily 2026-05-01",
+   "tags":[], "archived":false,
+   "created_at":"2026-05-01T08:00:00Z","updated_at":"2026-05-01T09:00:00Z"},
+  {"path":"notes/inbox/recent.md","kind":"inbox","title":"recent",
+   "tags":[], "archived":false,
+   "created_at":"2026-04-29T10:00:00Z","updated_at":"2026-04-30T10:00:00Z"},
+  {"path":"notes/inbox/old.md","kind":"inbox","title":"old",
+   "tags":[], "archived":false,
+   "created_at":"2026-03-01T10:00:00Z","updated_at":"2026-03-01T10:00:00Z"}
+]}
+EOF
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Notes"* ]]
+  [[ "$output" == *"daily today: ✓"* ]]
+  [[ "$output" == *"2 touched this week"* ]]
+}
+
+@test "brief --skip-tasks hides Tasks section" {
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --skip-tasks --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Tasks"* ]]
+  # Other sections still render.
+  [[ "$output" == *"Calendar"* ]] || [[ "$output" == *"Oncall"* ]]
+}
+
+@test "brief --skip-notes hides Notes section" {
+  mkdir -p "$JARVIS_HOME/test/notes/daily"
+  cat > "$JARVIS_HOME/test/notes/index.json" <<EOF
+{"version":1,"notes":[
+  {"path":"notes/daily/2026-05-01.md","kind":"daily","title":"d",
+   "tags":[],"archived":false,
+   "created_at":"2026-05-01T08:00:00Z","updated_at":"2026-05-01T09:00:00Z"}
+]}
+EOF
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --skip-notes --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Notes"* ]]
+}
+
+@test "brief --skip-reminders hides Reminders section" {
+  mkdir -p "$JARVIS_HOME/test/reminders"
+  jq -nc '{slug:"r1", message:"call dentist", status:"pending",
+           trigger_at:"2026-05-01T18:00:00Z", via:["local"], repeat:"",
+           anchor_at:"", until:"", count_remaining:null,
+           created_at:"2026-05-01T08:00:00Z", fire_count:0, last_fired_at:""}' \
+    > "$JARVIS_HOME/test/reminders/r1.json"
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --skip-reminders --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"call dentist"* ]]
+}
+
+@test "brief --skip-oncall hides Oncall section" {
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --skip-oncall --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Oncall"* ]]
+}
+
+@test "brief --skip-focus hides yesterday focus line" {
+  # Drop a focus.log entry for yesterday so the section would normally render.
+  cat > "$JARVIS_HOME/test/focus.log" <<EOF
+{"ts":"2026-04-30T09:00:00Z","event":"start","topic":"jarvis"}
+{"ts":"2026-04-30T10:00:00Z","event":"end","topic":"jarvis","elapsed_seconds":3600}
+EOF
+  run bash "${JARVIS_DIR}/cmds/brief/brief.sh" --skip-focus --profile test
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Focus yesterday"* ]]
+}
