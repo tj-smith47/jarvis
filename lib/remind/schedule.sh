@@ -5,8 +5,10 @@
 # Anchored forms (daily|weekly|weekdays|weekends|<day-list>) compute the next
 # wall-clock occurrence in $TZ (default UTC). DST handling:
 #   - Spring-forward gap (anchor falls in non-existent local time): skip the
-#     day, walk to the next valid candidate. GNU/BSD `date -d` exits non-zero
-#     for gap times, which we detect and skip.
+#     day, walk to the next valid candidate. GNU/BSD `date -d` does NOT error
+#     on gap times — it silently rolls forward to the next valid instant
+#     (e.g. 02:30 → 03:30 EDT). We detect this by round-tripping the parsed
+#     epoch back to local %H:%M and rejecting the mismatch.
 #   - Fall-back ambiguity (anchor falls in repeated local time): pick the
 #     first occurrence (matches GNU/BSD `date` defaults).
 
@@ -53,11 +55,24 @@ _rs_local_date() {
 # _rs_local_to_epoch "<YYYY-MM-DD HH:MM>" — local-tz spec → epoch.
 # Returns 2 with empty stdout when the local time doesn't exist (DST gap),
 # letting the caller skip the day.
+#
+# GNU/BSD `date` does not raise on gap times — they silently roll forward
+# to the next valid instant. We round-trip the parsed epoch back to local
+# %H:%M and compare to the requested anchor; mismatch → gap → return 2.
 _rs_local_to_epoch() {
-  local out
-  out="$(date -d "$1" +%s 2>/dev/null)" \
-    || out="$(date -j -f "%Y-%m-%d %H:%M" "$1" +%s 2>/dev/null)"
+  local spec="$1" out roundtrip want_hm
+  out="$(date -d "$spec" +%s 2>/dev/null)" \
+    || out="$(date -j -f "%Y-%m-%d %H:%M" "$spec" +%s 2>/dev/null)"
   if [[ -z "$out" ]]; then
+    return 2
+  fi
+  # want_hm is the trailing HH:MM token of the local spec. Split on the
+  # last space rather than indexing fixed offsets so a future caller can
+  # pass alternative date formats without resilencing the guard.
+  want_hm="${spec##* }"
+  roundtrip="$(date -d "@$out" +%H:%M 2>/dev/null \
+            || date -j -f %s "$out" +%H:%M 2>/dev/null)"
+  if [[ -z "$roundtrip" || "$roundtrip" != "$want_hm" ]]; then
     return 2
   fi
   printf '%s\n' "$out"
