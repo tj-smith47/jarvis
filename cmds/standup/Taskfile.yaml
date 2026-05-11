@@ -21,7 +21,7 @@ tasks:
         jarvis standup --all-repos
 
       To populate `[standup] repos` automatically, run:
-        jarvis standup discover           # walk $HOME, prompt to write
+        jarvis standup discover           # walk ~/src or $HOME, prompt to write
         jarvis standup discover --append  # merge into existing list
     vars:
       FLAGS:
@@ -33,24 +33,43 @@ tasks:
     cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"
 
   discover:
-    desc: "Walk $HOME for git repos and populate [standup].repos in config.toml"
+    desc: "Find git repos (scan) or emit commit activity (activity)"
     summary: |
-      One-shot setup helper. Default: prints discovered paths and prompts
-      y/N to write. --write skips the prompt. --append merges with the
-      existing list. --json emits a JSON array (no prompt, no write).
+      Two modes:
 
-      Examples:
-        jarvis standup discover                  # prompt
-        jarvis standup discover --write          # auto-write
-        jarvis standup discover --append --yes   # merge new entries
-        jarvis standup discover --root ~/work    # different root
-        jarvis standup discover --max-depth 6    # walk deeper
+      --scan (default)
+        Walk a root (~/src if present, else $HOME) for `.git` dirs and
+        populate `[standup] repos = [...]` in config.toml. Prompts y/N
+        unless --write / --append / --yes.
+
+        Examples:
+          jarvis standup discover                  # prompt
+          jarvis standup discover --write          # auto-write
+          jarvis standup discover --append --yes   # merge new entries
+          jarvis standup discover --root ~/work    # different root
+          jarvis standup discover --max-depth 6    # walk deeper
+
+      --activity
+        Iterate the repos in `[standup] repos` (or --repo for a single
+        repo), filter `git log` by each repo's `user.email`, and emit
+        commit NDJSON to stdout. The same feed standup consumes,
+        surfaced for inspection / piping.
+
+        Examples:
+          jarvis standup discover --activity
+          jarvis standup discover --activity --since 2d
+          jarvis standup discover --activity --repo /opt/repos/cfgd
+          jarvis standup discover --activity | jq -r .subject
     vars:
       FLAGS:
-        - {name: write,     type: bool,             desc: "Skip prompt; write the discovered list"}
-        - {name: append,    type: bool,             desc: "Merge into existing list (don't replace)"}
-        - {name: json,      type: bool,             desc: "Emit a JSON array; no prompt, no write"}
+        - {name: write,     type: bool,                 desc: "Skip prompt; write the discovered list"}
+        - {name: append,    type: bool,                 desc: "Merge into existing list (don't replace)"}
+        - {name: json,      type: bool,                 desc: "Emit a JSON array; no prompt, no write"}
         - {name: max-depth, type: string, default: "4", desc: "find maxdepth (default 4)"}
-        - {name: root,      type: string,           desc: "Walk root (default $HOME)"}
-        - {name: yes, short: y, type: bool,         desc: "Skip prompt; assume yes"}
+        - {name: root,      type: string,               desc: "Walk root (default ~/src or $HOME)"}
+        - {name: yes, short: y, type: bool,             desc: "Skip prompt; assume yes"}
+        - {name: activity,  type: bool,                 desc: "Emit commit NDJSON instead of scanning"}
+        - {name: since,  short: S, type: string, default: "1d", desc: "Activity window (Ns/Nm/Nh/Nd/Nw)"}
+        - {name: repo,   short: r, type: string,        desc: "Single repo path for --activity"}
+        - {name: author, type: string,                  desc: "Override per-repo user.email author filter"}
     cmd: "CLI_ARGS='{{.CLI_ARGS}}' '{{.FRAMEWORK_DIR}}/lib/router/router.sh' '{{.TASK}}'"

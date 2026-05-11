@@ -127,6 +127,24 @@ EOF
   [[ "$output" == *"fix: noremote work"* ]]
 }
 
+@test "yesterday-git flags commits without a PR ref as '⚠ no PR'" {
+  # Two commits in the window: one with `(#NNN)` PR ref, one without.
+  # Renderer must append `⚠ no PR` only to the unref'd row, so the user
+  # can tell at standup time which scratch branches still need a PR.
+  ( cd "$REPO" \
+    && git remote add origin https://github.com/acme/widgets.git \
+    && git commit --allow-empty -m "feat: shipped via PR (#99)" \
+                  --date="2026-04-30T14:00:00Z" )
+  run bash "${JARVIS_DIR}/cmds/standup/standup.sh" \
+    --since 1d --repo "$REPO" --profile test
+  [ "$status" -eq 0 ]
+  # The unref'd commit (wip: yesterday's work) must carry the flag.
+  [[ "$output" =~ wip:\ yesterday\'s\ work[[:space:]]+⚠[[:space:]]+no\ PR ]]
+  # The (#99) commit must NOT carry the flag.
+  flagged_pr_row="$(printf '%s\n' "$output" | grep -F 'shipped via PR' | grep -F 'no PR' || true)"
+  [ -z "$flagged_pr_row" ]
+}
+
 @test "blockers: long-standing note (older than --since) is still surfaced" {
   # Pre-fix the section silently filtered out blockers that hadn't been
   # touched in the standup window — exactly the ones most likely to need

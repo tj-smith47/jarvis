@@ -1,25 +1,40 @@
 #!/usr/bin/env bash
-# standup discover — walk $HOME for git repos and populate the
-# `[standup] repos = [...]` config so `--all-repos` stops being a manual
-# list-maintenance task.
+# standup discover — two modes, one config.
 #
-# Default: shallow walk ($HOME, max depth 4) excluding common dotdir +
-# package-store paths (.git/, .Trash, node_modules, .cache/, Library/, etc.).
-# Behavior is deterministic (sorted output) so re-running yields the same
-# config.
+#   --scan (default)
+#     Walk a root (default ~/src if it exists, else $HOME) for `.git`
+#     directories, then write `[standup] repos = [...]` to the profile's
+#     config.toml. This is the one-shot setup helper for `--all-repos`.
 #
-# Modes:
-#   default:           print discovered paths to stdout, prompt y/N to write
-#   --write:           skip prompt; overwrite [standup].repos in config.toml
-#   --append:          merge into existing repos (de-duplicate)
-#   --json:            emit a JSON array (no prompt, no write)
-#   --max-depth N:     override the default maxdepth=4
-#   --root <DIR>:      override the default root ($HOME)
+#   --activity [--since 1d] [--repo <dir>]
+#     Read `[standup] repos` from config (or use --repo for ad-hoc),
+#     iterate each repo, and emit commit NDJSON via
+#     lib/integrations/git.sh::git_commits_since. Filtered by the local
+#     repo's `git config user.email`. The standup cmd consumes the same
+#     NDJSON shape, so this is the underlying activity feed surfaced as
+#     its own command for inspection / piping.
+#
+# Mode is determined by --activity presence; otherwise --scan is implicit.
+#
+# Scan flags:
+#   --write           skip prompt; overwrite [standup].repos
+#   --append          merge into existing repos (de-duplicate)
+#   --json            emit JSON array (no prompt, no write)
+#   --max-depth N     override the default maxdepth=4
+#   --root <DIR>      override the default root
+#   --yes / -y        skip prompt; assume yes
+#
+# Activity flags:
+#   --since <window>  Ns / Nm / Nh / Nd / Nw (default 1d).
+#                     d / w units anchor to start-of-day UTC, matching
+#                     the standup cmd's window semantics.
+#   --repo <DIR>      single-repo override; skips the config read.
+#   --author <EMAIL>  override the per-repo user.email author filter.
 #
 # Exit codes:
-#   0   wrote config / printed json / user accepted prompt
-#   1   no repos found in the walk
-#   2   bad flag
+#   0   ok (wrote / printed / emitted)
+#   1   no repos found (scan) / no [standup].repos configured (activity)
+#   2   bad flag / invalid arg
 #   3   user declined the y/N prompt
 
 set -euo pipefail
@@ -43,7 +58,11 @@ if ! declare -p CLIFT_FLAGS >/dev/null 2>&1; then
       {"name":"json","type":"bool"},
       {"name":"max-depth","type":"string"},
       {"name":"root","type":"string"},
-      {"name":"yes","short":"y","type":"bool"}]' \
+      {"name":"yes","short":"y","type":"bool"},
+      {"name":"activity","type":"bool"},
+      {"name":"since","short":"S","type":"string"},
+      {"name":"repo","short":"r","type":"string"},
+      {"name":"author","type":"string"}]' \
     "$@"
 fi
 
@@ -51,8 +70,96 @@ want_write="${CLIFT_FLAGS[write]:-}"
 want_append="${CLIFT_FLAGS[append]:-}"
 want_json="${CLIFT_FLAGS[json]:-}"
 want_yes="${CLIFT_FLAGS[yes]:-}"
+want_activity="${CLIFT_FLAGS[activity]:-}"
 max_depth="${CLIFT_FLAGS[max-depth]:-4}"
-root="${CLIFT_FLAGS[root]:-$HOME}"
+since_flag="${CLIFT_FLAGS[since]:-1d}"
+repo_flag="${CLIFT_FLAGS[repo]:-}"
+author_flag="${CLIFT_FLAGS[author]:-}"
+
+profile_dir="$(state_profile_dir)"
+cfg="$profile_dir/config.toml"
+
+# ============================================================ activity
+# Reads [standup] repos (or --repo) and emits commit NDJSON. Uses the
+# same git.sh helper that standup consumes so the two views are
+# guaranteed to agree.
+if [[ "$want_activity" == "true" ]]; then
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/integrations/git.sh"
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/native/clock.sh"
+
+  # --since resolution mirrors standup.sh: d/w units anchor to
+  # start-of-day UTC; sub-day units are rolling. Bad input → 1d.
+  now_iso="$(native_now_iso)"
+  now_epoch="$(native_now_epoch)"
+  anchor_epoch="$now_epoch"
+  if [[ "$since_flag" =~ ^([0-9]+)([smhdw])$ ]]; then
+    n="${BASH_REMATCH[1]}"; u="${BASH_REMATCH[2]}"
+    case "$u" in
+      s) sec=$n ;;
+      m) sec=$((n*60)) ;;
+      h) sec=$((n*3600)) ;;
+      d) sec=$((n*86400));  anchor_epoch="$(native_resolve_to_epoch "$(native_day_start "$now_iso")")" ;;
+      w) sec=$((n*604800)); anchor_epoch="$(native_resolve_to_epoch "$(native_day_start "$now_iso")")" ;;
+    esac
+  else
+    sec=86400
+    anchor_epoch="$(native_resolve_to_epoch "$(native_day_start "$now_iso")")"
+  fi
+  since_epoch=$(( anchor_epoch - sec ))
+  since_iso="$(native_epoch_to_iso "$since_epoch")"
+
+  # Build the repo list. --repo wins; otherwise read from config.
+  repos=()
+  if [[ -n "$repo_flag" ]]; then
+    repos=("$repo_flag")
+  else
+    if [[ ! -f "$cfg" ]]; then
+      printf 'standup discover --activity: no config at %s; run `standup discover` to populate or pass --repo\n' "$cfg" >&2
+      exit 1
+    fi
+    if ! command -v dasel >/dev/null 2>&1; then
+      printf 'standup discover --activity: dasel not on PATH (needed to read [standup] repos)\n' >&2
+      exit 1
+    fi
+    repos_json="$(dasel -i toml -o json standup.repos < "$cfg" 2>/dev/null || true)"
+    if [[ -z "$repos_json" || "$repos_json" == "null" ]]; then
+      printf 'standup discover --activity: [standup] repos not set in %s\n' "$cfg" >&2
+      exit 1
+    fi
+    while IFS= read -r r; do
+      [[ -n "$r" ]] && repos+=("$r")
+    done < <(jq -r '.[]?' <<< "$repos_json" 2>/dev/null)
+  fi
+
+  if (( ${#repos[@]} == 0 )); then
+    printf 'standup discover --activity: no repos to scan\n' >&2
+    exit 1
+  fi
+
+  # Each git_commits_since call streams its own NDJSON. Missing repos /
+  # no user.email cases return 1 — we tolerate them silently here (the
+  # stderr from git.sh itself surfaces the user.email diagnostic for the
+  # user; tooling consumers can pipe stderr away).
+  rc=0
+  for r in "${repos[@]}"; do
+    git_commits_since "$r" "$since_iso" "$now_iso" "$author_flag" || rc=$?
+  done
+  # rc=1 from a single missing repo isn't fatal — the activity stream is
+  # still valid, just smaller. Exit 0 unless every repo failed (we don't
+  # currently distinguish; one-line stderr makes it visible).
+  exit 0
+fi
+
+# ============================================================ scan (default)
+# Walk a root for .git directories and write/print the result. Default
+# root: ~/src if it exists (platform engineers' convention), else $HOME.
+default_root="$HOME"
+if [[ -z "${CLIFT_FLAGS[root]:-}" && -d "$HOME/src" ]]; then
+  default_root="$HOME/src"
+fi
+root="${CLIFT_FLAGS[root]:-$default_root}"
 
 if [[ ! "$max_depth" =~ ^[0-9]+$ ]]; then
   clift_exit 2 "invalid --max-depth: $max_depth (expected positive integer)"
@@ -60,9 +167,6 @@ fi
 if [[ ! -d "$root" ]]; then
   clift_exit 2 "--root path not found: $root"
 fi
-
-profile_dir="$(state_profile_dir)"
-cfg="$profile_dir/config.toml"
 
 # Walk the root for `.git` directories, then strip the trailing `/.git` to
 # yield repo roots. Filters: depth-bounded, dotdir-suppressed, common

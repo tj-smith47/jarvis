@@ -65,6 +65,8 @@ source "${CLI_DIR}/lib/state/config.sh"
 source "${CLI_DIR}/lib/integrations/jira.sh"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/integrations/gh.sh"
+# shellcheck source=/dev/null
+source "${CLI_DIR}/lib/integrations/git.sh"
 # Calendar stack (only needed by --join, but cheap and keeps a single source
 # block — providers register at source-time, so order matters: provider.sh
 # defines calendar_register; backends register themselves on source).
@@ -150,64 +152,36 @@ if [[ "${#git_repos[@]}" -eq 0 ]]; then
 fi
 
 # ----------------------------------------------------------- yesterday: git
-# Author-date filter via awk (see header comment). Each line is prefixed
-# with the repo's owner/name slug (or basename if no remote) so multi-repo
-# standups stay readable; if the commit subject ends in a "(#NNN)" PR
-# ref, that gets pulled out as `<slug>#<NNN>`, otherwise the short hash
-# is appended (`<slug>@<short>`) so every row is actionable.
-_standup_repo_slug() {
-  local dir="$1" origin
-  # Subshell isolates the cd; failure of either cd or `git config` yields
-  # an empty origin and we fall through to the basename path.
-  origin="$(cd "$dir" 2>/dev/null && git config remote.origin.url 2>/dev/null)" || origin=""
-  if [[ -z "$origin" ]]; then
-    (cd "$dir" 2>/dev/null && basename "$(pwd)")
-    return 0
-  fi
-  # Normalize formats so split-by-/ leaves owner/name as the last two parts:
-  #   https://github.com/owner/name(.git)? → owner/name
-  #   git@github.com:owner/name(.git)?     → owner/name (after replacing : with /)
-  #   ssh://git@github.com/owner/name      → owner/name
-  printf '%s' "$origin" | awk '{
-    sub(/\.git$/, "")
-    sub(/\/$/, "")
-    gsub(/:/, "/")
-    n = split($0, a, "/")
-    if (n >= 2) print a[n-1] "/" a[n]
-    else        print a[n]
-  }'
-}
+# Single-source the commit feed via lib/integrations/git.sh so this view
+# and `standup discover --activity` can never disagree. The lib emits
+# NDJSON per commit; we render with jq.
+#
+# Render shape:
+#   - <slug>#NNN  <subject>           when subject carries `(#NNN)` PR ref
+#   - <slug>@<sha>  <subject>  ⚠ no PR  when subject has no PR ref
+#
+# The `⚠ no PR` suffix is the cross-correlation signal the user asked for:
+# commits whose subject doesn't carry a PR ref are either direct pushes
+# to main or feature branches that haven't been turned into a PR yet —
+# both worth flagging in a standup draft.
+git_commits_ndjson=""
+for r in "${git_repos[@]}"; do
+  # git_commits_since returns 1 on (no git / missing dir / no user.email);
+  # tolerate silently so one bad repo doesn't blank the whole section.
+  out="$(git_commits_since "$r" "$since_iso" "$now_iso" 2>/dev/null || true)"
+  [[ -n "$out" ]] && git_commits_ndjson+="$out"$'\n'
+done
 
 git_log_lines=""
-for r in "${git_repos[@]}"; do
-  [[ -d "$r/.git" ]] || continue
-  email="$(cd "$r" 2>/dev/null && git config user.email 2>/dev/null)" || email=""
-  [[ -z "$email" ]] && continue
-  repo_slug="$(_standup_repo_slug "$r")"
-  # `%H|%h|%s` carries author-date, short hash, subject. Awk extracts the
-  # PR ref from a trailing `(#NNN)` if present; otherwise falls back to
-  # the short hash so the reader can `git show` the commit either way.
-  lines="$(
-    cd "$r" 2>/dev/null && \
-      git log --author="$email" --pretty=format:'%aI|%h|%s' 2>/dev/null \
-        | awk -F'|' -v s="$since_iso" -v u="$now_iso" -v repo="$repo_slug" '
-            $1 >= s && $1 <= u {
-              hash = $2
-              # Subject may contain |; rejoin slots 3..NF.
-              subj = $3
-              for (i = 4; i <= NF; i++) subj = subj "|" $i
-              pr = ""
-              if (match(subj, / \(#[0-9]+\)$/)) {
-                pr = substr(subj, RSTART + 3, RLENGTH - 4)
-                subj = substr(subj, 1, RSTART - 1)
-              }
-              ref = (pr != "" ? "#" pr : "@" hash)
-              printf "- %s%s  %s\n", repo, ref, subj
-            }
-          '
-  )" || lines=""
-  [[ -n "$lines" ]] && git_log_lines+="$lines"$'\n'
-done
+if [[ -n "$git_commits_ndjson" ]]; then
+  git_log_lines="$(printf '%s' "$git_commits_ndjson" | jq -r '
+    "- " + .repo +
+    (if .pr != null then "#\(.pr)" else "@\(.sha)" end) +
+    "  " + .subject +
+    (if .pr == null then "  ⚠ no PR" else "" end)
+  ' 2>/dev/null || true)"
+  [[ -n "$git_log_lines" ]] && git_log_lines+=$'\n'
+fi
 
 # `--verbose` lets integration stderr through so auth/network failures
 # are visible without dropping into `jarvis doctor --integrations-live`.

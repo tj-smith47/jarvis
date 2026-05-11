@@ -102,3 +102,95 @@ EOF
   run _run_discover --root "$TEST_DIR/walk-root" --max-depth abc --json
   [ "$status" -eq 2 ]
 }
+
+# ============================================================ --activity
+#
+# Activity mode: read [standup] repos from config, iterate, emit commit
+# NDJSON via lib/integrations/git.sh. Test fixtures seed a small repo
+# with deterministic --date commits so the window filter is verifiable.
+
+_seed_repo() {
+  local dir="$1" date1="$2" subj1="$3" date2="${4:-}" subj2="${5:-}"
+  mkdir -p "$dir"
+  ( cd "$dir" \
+    && git init -q --initial-branch=main \
+    && git config user.email alice@example.com \
+    && git config user.name  alice \
+    && git remote add origin "https://github.com/acme/$(basename "$dir").git" \
+    && git commit --allow-empty -m "$subj1" --date="$date1" )
+  if [[ -n "$date2" ]]; then
+    ( cd "$dir" && git commit --allow-empty -m "$subj2" --date="$date2" )
+  fi
+}
+
+@test "discover --activity --repo emits commit NDJSON for the single repo" {
+  REPO="$TEST_DIR/single"
+  _seed_repo "$REPO" "2026-04-30T10:00:00Z" "wip: yesterday" \
+                     "2026-04-30T13:00:00Z" "feat: add thing (#42)"
+  export JARVIS_FAKE_NOW="2026-05-01T15:00:00Z"
+  run _run_discover --activity --repo "$REPO" --since 1d
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c .)" -eq 2 ]
+  # Every line is valid JSON.
+  printf '%s\n' "$output" | while IFS= read -r row; do
+    echo "$row" | jq -e '.' > /dev/null
+  done
+}
+
+@test "discover --activity reads [standup] repos from config when --repo absent" {
+  REPO1="$TEST_DIR/r1"; REPO2="$TEST_DIR/r2"
+  _seed_repo "$REPO1" "2026-04-30T10:00:00Z" "r1: yesterday"
+  _seed_repo "$REPO2" "2026-04-30T11:00:00Z" "r2: yesterday"
+  local cfg="$JARVIS_HOME/test/config.toml"
+  cat > "$cfg" <<EOF
+[standup]
+repos = ["$REPO1", "$REPO2"]
+EOF
+  export JARVIS_FAKE_NOW="2026-05-01T15:00:00Z"
+  run _run_discover --activity --since 1d
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r1: yesterday"* ]]
+  [[ "$output" == *"r2: yesterday"* ]]
+}
+
+@test "discover --activity --since 7d picks up older commits" {
+  REPO="$TEST_DIR/old"
+  _seed_repo "$REPO" "2026-04-25T10:00:00Z" "feat: a week ago" \
+                     "2026-04-30T10:00:00Z" "feat: yesterday"
+  export JARVIS_FAKE_NOW="2026-05-01T15:00:00Z"
+  run _run_discover --activity --repo "$REPO" --since 7d
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feat: a week ago"* ]]
+  [[ "$output" == *"feat: yesterday"* ]]
+}
+
+@test "discover --activity exits 1 when no config and no --repo" {
+  rm -f "$JARVIS_HOME/test/config.toml"
+  run --separate-stderr _run_discover --activity --since 1d
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"no config"* ]] || [[ "$stderr" == *"--repo"* ]]
+}
+
+@test "discover --activity exits 1 when [standup] repos is missing from config" {
+  local cfg="$JARVIS_HOME/test/config.toml"
+  cat > "$cfg" <<EOF
+[other]
+key = "value"
+EOF
+  run --separate-stderr _run_discover --activity --since 1d
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"repos not set"* ]]
+}
+
+@test "discover --activity --author overrides the per-repo user.email filter" {
+  REPO="$TEST_DIR/multi-author"
+  _seed_repo "$REPO" "2026-04-30T10:00:00Z" "alice: commit"
+  ( cd "$REPO" \
+    && git -c user.email="bob@example.com" -c user.name="bob" \
+       commit --allow-empty -m "bob: commit" --date="2026-04-30T11:00:00Z" )
+  export JARVIS_FAKE_NOW="2026-05-01T15:00:00Z"
+  run _run_discover --activity --repo "$REPO" --since 1d --author "bob@example.com"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bob: commit"* ]]
+  [[ "$output" != *"alice: commit"* ]]
+}
