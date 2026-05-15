@@ -354,6 +354,7 @@ if command -v gh >/dev/null 2>&1; then
   if gh auth status >/dev/null 2>&1; then
     printf '    gh             ok\n'
   else
+    # shellcheck disable=SC2016  # backticks are literal markdown, not subshell
     printf '    gh             auth required  (run `gh auth login`)\n'
   fi
 else

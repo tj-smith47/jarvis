@@ -46,7 +46,14 @@ jobs:
       - name: Clone clift framework
         run: |
           git clone --depth 1 https://github.com/tj-smith47/clift "$HOME/.clift"
+          # cmd scripts read CLIFT_FRAMEWORK_DIR via bin/jarvis, but
+          # Taskfile.yaml's `includes:` expands {{.FRAMEWORK_DIR}} BEFORE
+          # dotenv loads, so the committed `FRAMEWORK_DIR=../..` from .env
+          # never reaches go-task at parse time. Set both names so CI
+          # matches what `task setup:cli` writes during a real install.
           echo "CLIFT_FRAMEWORK_DIR=$HOME/.clift" >> "$GITHUB_ENV"
+          echo "FRAMEWORK_DIR=$HOME/.clift" >> "$GITHUB_ENV"
+          echo "CLI_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Build native helpers
         run: task build

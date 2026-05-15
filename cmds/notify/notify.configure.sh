@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2154  # priority/url/token/webhook/to/from/transport/subject_prefix set dynamically by _prompt via printf -v
 # notify configure <channel> — prompt for channel-specific values and
 # write the resulting `[notify.<channel>]` block to the active profile's
 # config.toml. Mirrors the gotify / slack / email schemas in lib/notify/*.
@@ -166,10 +167,10 @@ mkdir -p "$profile_dir"
 if [[ ! -f "$cfg" ]]; then
   printf '%s\n' "$new_section" > "$cfg"
 elif ! grep -qFx "$section_header" "$cfg"; then
-  {
-    [[ -s "$cfg" ]] && printf '\n'
-    printf '%s\n' "$new_section"
-  } >> "$cfg"
+  # Stat before opening the append-group so we don't read+write the same
+  # file inside one pipeline (shellcheck SC2094 false-positive otherwise).
+  if [[ -s "$cfg" ]]; then leading_nl=$'\n'; else leading_nl=''; fi
+  printf '%s%s\n' "$leading_nl" "$new_section" >> "$cfg"
 else
   tmp="$(mktemp)"
   awk -v header="$section_header" -v new_section="$new_section" '

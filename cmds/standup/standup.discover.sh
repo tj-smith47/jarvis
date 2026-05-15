@@ -116,6 +116,7 @@ if [[ "$want_activity" == "true" ]]; then
     repos=("$repo_flag")
   else
     if [[ ! -f "$cfg" ]]; then
+      # shellcheck disable=SC2016  # backticks are literal markdown, not subshell
       printf 'standup discover --activity: no config at %s; run `standup discover` to populate or pass --repo\n' "$cfg" >&2
       exit 1
     fi
@@ -142,13 +143,13 @@ if [[ "$want_activity" == "true" ]]; then
   # no user.email cases return 1 — we tolerate them silently here (the
   # stderr from git.sh itself surfaces the user.email diagnostic for the
   # user; tooling consumers can pipe stderr away).
-  rc=0
+  # Per-repo errors are tolerated: a missing repo / no user.email yields
+  # exit 1 from git_commits_since, but the activity NDJSON is still valid
+  # for the repos that succeeded. The git layer prints the user-facing
+  # diagnostic to stderr; we don't need to count rc.
   for r in "${repos[@]}"; do
-    git_commits_since "$r" "$since_iso" "$now_iso" "$author_flag" || rc=$?
+    git_commits_since "$r" "$since_iso" "$now_iso" "$author_flag" || true
   done
-  # rc=1 from a single missing repo isn't fatal — the activity stream is
-  # still valid, just smaller. Exit 0 unless every repo failed (we don't
-  # currently distinguish; one-line stderr makes it visible).
   exit 0
 fi
 
@@ -268,11 +269,11 @@ new_section="$(
 if [[ ! -f "$cfg" ]]; then
   printf '%s\n' "$new_section" > "$cfg"
 elif ! grep -qE '^\[standup\]' "$cfg"; then
-  # Existing config without a [standup] section — append.
-  {
-    [[ -s "$cfg" ]] && printf '\n'
-    printf '%s\n' "$new_section"
-  } >> "$cfg"
+  # Existing config without a [standup] section — append. Stat before
+  # opening the append-group so we don't read+write the same file inside
+  # one pipeline (shellcheck SC2094).
+  if [[ -s "$cfg" ]]; then leading_nl=$'\n'; else leading_nl=''; fi
+  printf '%s%s\n' "$leading_nl" "$new_section" >> "$cfg"
 else
   # Existing [standup] section — replace it. awk:
   #   skip lines from `[standup]` up to (but not including) the next
