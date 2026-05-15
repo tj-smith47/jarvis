@@ -6,6 +6,7 @@
 Output ".vhs/gifs/jarvis-coffee.gif"
 
 Set Shell "bash"
+Set Theme "Dracula"
 Set FontSize 22
 Set Width 1200
 Set Height 400

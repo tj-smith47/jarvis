@@ -6,9 +6,10 @@
 Output ".vhs/gifs/jarvis-task.gif"
 
 Set Shell "bash"
-Set FontSize 20
-Set Width 1200
-Set Height 900
+Set Theme "Dracula"
+Set FontSize 18
+Set Width 1400
+Set Height 700
 Set Padding 20
 Set TypingSpeed 50ms
 

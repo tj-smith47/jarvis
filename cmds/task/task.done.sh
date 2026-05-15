@@ -20,7 +20,11 @@ source "${CLI_DIR}/lib/slug.sh"
 source "${CLI_DIR}/lib/task/store.sh"
 
 if ! declare -p CLIFT_FLAGS >/dev/null 2>&1; then
-  declare -A CLIFT_FLAGS=()
+  # shellcheck source=/dev/null
+  source "${CLI_DIR}/lib/runtime/standalone_argv.sh"
+  jarvis_standalone_argv_parse \
+    '[{"name":"profile","type":"string"}]' \
+    "$@"
 fi
 
 input="${CLIFT_POS_1:-}"

@@ -182,7 +182,10 @@ END:VEVENT
 END:VCALENDAR
 ICS
 
-# Per-profile config: ICS calendar + oncall + standup repos.
+# Per-profile config: ICS calendar + oncall + notify channels.
+# notify.slack/gotify URLs are deterministic stubs; the curl shim never hits
+# the network, so the demo can exercise multi-channel reminders without
+# leaking a real webhook into the committed gif.
 cat > "$PROFILE_DIR/config.toml" <<TOML
 [calendar]
 provider = "ics"
@@ -193,6 +196,17 @@ source = "$PROFILE_DIR/cal.ics"
 [oncall]
 primary = "alex"
 secondary = "you"
+
+[notify.slack]
+webhook = "https://hooks.slack.example/T000/B000/demo"
+
+[notify.gotify]
+url   = "https://gotify.example"
+token = "demo-token"
+
+[notify.email]
+to   = "demo@example.com"
+from = "jarvis@example.com"
 TOML
 
 # Deploy log — two rows from "today" so brief surfaces both with HH:MM.
@@ -232,6 +246,11 @@ if (( $# == 0 )); then
 fi
 
 echo "Recording (HOME=$HOME, JARVIS_HOME=$JARVIS_HOME)..."
+# Per-tape state reset: each tape is its own scene. Mutable artifacts
+# (tasks, reminders, focus.log, notes) get wiped between tapes so a tape
+# that re-seeds its own data doesn't show counters bumped by an earlier
+# tape's writes. The static fixtures (config.toml, cal.ics, deploys.log)
+# are restored on each iteration so the demo profile is fully self-contained.
 for tape in "${TAPES[@]}"; do
   if [[ ! -f "$tape" ]]; then
     echo "  skip (not found): $tape" >&2
@@ -239,6 +258,13 @@ for tape in "${TAPES[@]}"; do
   fi
   name="$(basename "$tape" .tape)"
   echo "  recording $name..."
+  rm -rf \
+    "$PROFILE_DIR/tasks" \
+    "$PROFILE_DIR/reminders" \
+    "$PROFILE_DIR/notes" \
+    "$PROFILE_DIR/focus.log" \
+    "$PROFILE_DIR/notify.log" \
+    "$PROFILE_DIR/cache"
   vhs "$tape"
 done
 

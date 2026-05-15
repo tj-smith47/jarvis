@@ -8,6 +8,7 @@
 Output ".vhs/gifs/jarvis-doctor.gif"
 
 Set Shell "bash"
+Set Theme "Dracula"
 Set FontSize 20
 Set Width 1200
 Set Height 900

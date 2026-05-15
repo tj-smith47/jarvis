@@ -327,6 +327,30 @@ if [[ "$short" == "true" ]]; then
 fi
 
 # Pretty render.
+#
+# Section headers ride the same theme contract as log_info/log_success:
+# `LOG_THEME=icons-color` (default) → colored icon + bold cyan name;
+# `LOG_THEME=icons` → icon + bold name, no color; anything without "color"
+# → no ANSI sequences. NO_COLOR strips colors via the empty CLIFT_CLR_*
+# vars already set by log.sh. Header renders to stdout (the brief body is
+# the user's data; log_* helpers go to stderr).
+_brief_section() {
+  local icon="$1" name="$2" trailer="${3:-}"
+  local clr="${CLIFT_CLR_CYAN:-}" rst="${CLIFT_CLR_RESET:-}"
+  local bold="\033[1m" ; [[ -z "$rst" ]] && bold=""
+  case "${CLIFT_LOG_THEME:-icons-color}" in
+    icons-color|*-color|custom)
+      printf '  %b%s%b  %b%s%s%b\n' "$clr" "$icon" "$rst" "$bold$clr" "$name" "$trailer" "$rst"
+      ;;
+    icons|brackets|minimal)
+      printf '  %s  %b%s%s%b\n' "$icon" "$bold" "$name" "$trailer" "$rst"
+      ;;
+    *)
+      printf '  %s%s\n' "$name" "$trailer"
+      ;;
+  esac
+}
+
 printf '\n'
 if declare -F log_info >/dev/null 2>&1; then
   log_info "☀  Good morning — ${profile} profile"
@@ -340,7 +364,7 @@ if [[ -n "$calendar" ]]; then
   # used to drop .url silently and lacked duration entirely — meetings could
   # be joined via standup --join, but the brief surfaced neither link nor a
   # 30-min-vs-2-hour signal. Now both render alongside the title.
-  printf '  \033[1mCalendar\033[0m\n'
+  _brief_section "📅" "Calendar"
   printf '%s\n' "$calendar" | jq -r '
     def duration_str:
       if .end and .end != "" and .end != .start then
@@ -367,7 +391,7 @@ if [[ -n "$prs" ]]; then
   # buried all four — the audit's canonical example of "captured but
   # invisible". `now_iso` honors JARVIS_FAKE_NOW so age is deterministic
   # under tests.
-  printf '  \033[1mPRs awaiting your review\033[0m\n'
+  _brief_section "🔀" "PRs awaiting your review"
   printf '%s\n' "$prs" | jq -r --arg now "$now_iso" '
     def age_str:
       if (.updatedAt // "") != "" and ($now // "") != "" then
@@ -394,11 +418,12 @@ if [[ -n "$prs" ]]; then
 fi
 
 if [[ -n "$focus_yesterday" ]]; then
-  printf '  \033[1mFocus yesterday\033[0m  %s\n\n' "$focus_yesterday"
+  _brief_section "⏱" "Focus yesterday" "  $focus_yesterday"
+  printf '\n'
 fi
 
 if [[ -n "$reminders" ]]; then
-  printf '  \033[1mReminders today\033[0m\n'
+  _brief_section "🔔" "Reminders today"
   printf '%s\n' "$reminders" | jq -r '
     "    " +
     (.trigger_at | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
@@ -411,7 +436,7 @@ if [[ -n "$jira_rows" ]]; then
   # Each row carries priority/due/parent post-fix (jira.sh extended its
   # column projection). Render shows priority as a bracketed badge, due
   # date when set, and uses the URL when clicking through is wanted.
-  printf '  \033[1mJira in flight\033[0m\n'
+  _brief_section "🪲" "Jira in flight"
   printf '%s\n' "$jira_rows" | jq -r '
     "    " + .key + "  " + .summary +
     (if (.priority // "") != "" and .priority != "null" then "  [\(.priority)]" else "" end) +
@@ -425,10 +450,10 @@ fi
 # is fluent in the other.
 if (( tasks_open_count > 0 )); then
   if (( tasks_due_today_count > 0 )); then
-    printf '  \033[1mTasks\033[0m  %d open  ·  %d due today\n' \
-      "$tasks_open_count" "$tasks_due_today_count"
+    _brief_section "✓" "Tasks" \
+      "$(printf '  %d open  \xc2\xb7  %d due today' "$tasks_open_count" "$tasks_due_today_count")"
   else
-    printf '  \033[1mTasks\033[0m  %d open\n' "$tasks_open_count"
+    _brief_section "✓" "Tasks" "$(printf '  %d open' "$tasks_open_count")"
   fi
   if [[ -n "$tasks_top" ]]; then
     printf '%s\n' "$tasks_top" | jq -r '
@@ -446,26 +471,27 @@ fi
 # I have momentum or need to bootstrap; together they're a 5-second pulse.
 if [[ "$skip_notes" != "true" ]] && \
    { [[ -n "$notes_daily_today" ]] || (( notes_touched_week > 0 )); }; then
-  printf '  \033[1mNotes\033[0m'
+  _notes_trailer=""
   if [[ -n "$notes_daily_today" ]]; then
-    printf '  daily today: ✓'
+    _notes_trailer="  daily today: ✓"
   else
-    printf '  daily today: —'
+    _notes_trailer="  daily today: —"
   fi
   if (( notes_touched_week > 0 )); then
-    printf '  ·  %d touched this week' "$notes_touched_week"
+    _notes_trailer+="  $(printf '\xc2\xb7')  ${notes_touched_week} touched this week"
   fi
-  printf '\n\n'
+  _brief_section "📓" "Notes" "$_notes_trailer"
+  printf '\n'
 fi
 
 if [[ -n "$deploys" ]]; then
-  printf '  \033[1mDeploys\033[0m\n'
+  _brief_section "🚀" "Deploys"
   printf '%s\n' "$deploys" | jq -r '"    " + (.ts | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) + "  " + .service + "  " + .version + "  " + .status'
   printf '\n'
 fi
 
 if [[ -n "$oncall" ]]; then
-  printf '  \033[1mOncall\033[0m\n'
+  _brief_section "📟" "Oncall"
   printf '%s\n' "$oncall" | jq -r '
     "    " + .role + ":  " + .who +
     (if .pager then "  (pager: \(.pager))" else "" end) +
@@ -483,6 +509,7 @@ if [[ -z "$calendar" && -z "$prs" && -z "$jira_rows" && -z "$deploys" \
   if declare -F log_info >/dev/null 2>&1; then
     log_info "no integrations configured — run \`jarvis doctor\` for diagnostics"
   else
+    # shellcheck disable=SC2016  # backticks are literal markdown, not subshell
     printf 'info: no integrations configured — run `jarvis doctor` for diagnostics\n'
   fi
 fi
