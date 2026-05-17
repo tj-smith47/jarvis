@@ -239,6 +239,19 @@ Two surfaces, two purposes:
 **`.env`** — framework wiring, set once at install time by `task setup:cli`. Stores
 `CLI_DIR`, `FRAMEWORK_DIR`, `CLIFT_MODE`, `LOG_THEME`. Not profile-specific.
 
+**Icon style** — `brief` / `standup` section headers and row markers come in
+two consistent sets, selectable via the `JARVIS_ICONS` env var:
+
+```bash
+JARVIS_ICONS=unicode  # default — ◷ ⇄ ◔ ◉ ◆ ✓ ≡ ▲ ●
+                      # renders in any monospace font (tty, SSH, VHS)
+JARVIS_ICONS=emoji    # 📅 🔀 ⏱ 🔔 🪲 ✅ 📓 🚀 📟
+                      # requires a font with emoji coverage (Apple Color
+                      # Emoji, NotoColorEmoji, Twemoji)
+```
+
+Set in `~/.bashrc` (or `.env`) once; applies to every profile.
+
 **`~/.jarvis-state/<profile>/config.toml`** — per-profile credentials and preferences:
 
 ```toml

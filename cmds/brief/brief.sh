@@ -103,6 +103,8 @@ source "${CLI_DIR}/lib/state/profile.sh"
 profile_dir="$(state_profile_dir)"
 profile="$JARVIS_PROFILE"
 # shellcheck source=/dev/null
+source "${CLI_DIR}/lib/ui/icons.sh"
+# shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/config.sh"
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/cache/file.sh"
@@ -352,10 +354,11 @@ _brief_section() {
 }
 
 printf '\n'
+_greet_icon="$(jarvis_icon greeting)"
 if declare -F log_info >/dev/null 2>&1; then
-  log_info "☀  Good morning — ${profile} profile"
+  log_info "${_greet_icon}  Good morning — ${profile} profile"
 else
-  printf 'info: ☀  Good morning — %s profile\n' "$profile"
+  printf 'info: %s  Good morning — %s profile\n' "$_greet_icon" "$profile"
 fi
 printf '\n'
 
@@ -364,7 +367,7 @@ if [[ -n "$calendar" ]]; then
   # used to drop .url silently and lacked duration entirely — meetings could
   # be joined via standup --join, but the brief surfaced neither link nor a
   # 30-min-vs-2-hour signal. Now both render alongside the title.
-  _brief_section "📅" "Calendar"
+  _brief_section "$(jarvis_icon calendar)" "Calendar"
   printf '%s\n' "$calendar" | jq -r '
     def duration_str:
       if .end and .end != "" and .end != .start then
@@ -391,7 +394,7 @@ if [[ -n "$prs" ]]; then
   # buried all four — the audit's canonical example of "captured but
   # invisible". `now_iso` honors JARVIS_FAKE_NOW so age is deterministic
   # under tests.
-  _brief_section "🔀" "PRs awaiting your review"
+  _brief_section "$(jarvis_icon prs)" "PRs awaiting your review"
   printf '%s\n' "$prs" | jq -r --arg now "$now_iso" '
     def age_str:
       if (.updatedAt // "") != "" and ($now // "") != "" then
@@ -418,12 +421,12 @@ if [[ -n "$prs" ]]; then
 fi
 
 if [[ -n "$focus_yesterday" ]]; then
-  _brief_section "⏱" "Focus yesterday" "  $focus_yesterday"
+  _brief_section "$(jarvis_icon focus)" "Focus yesterday" "  $focus_yesterday"
   printf '\n'
 fi
 
 if [[ -n "$reminders" ]]; then
-  _brief_section "🔔" "Reminders today"
+  _brief_section "$(jarvis_icon reminders)" "Reminders today"
   printf '%s\n' "$reminders" | jq -r '
     "    " +
     (.trigger_at | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) +
@@ -436,7 +439,7 @@ if [[ -n "$jira_rows" ]]; then
   # Each row carries priority/due/parent post-fix (jira.sh extended its
   # column projection). Render shows priority as a bracketed badge, due
   # date when set, and uses the URL when clicking through is wanted.
-  _brief_section "🪲" "Jira in flight"
+  _brief_section "$(jarvis_icon jira)" "Jira in flight"
   printf '%s\n' "$jira_rows" | jq -r '
     "    " + .key + "  " + .summary +
     (if (.priority // "") != "" and .priority != "null" then "  [\(.priority)]" else "" end) +
@@ -450,10 +453,10 @@ fi
 # is fluent in the other.
 if (( tasks_open_count > 0 )); then
   if (( tasks_due_today_count > 0 )); then
-    _brief_section "✓" "Tasks" \
+    _brief_section "$(jarvis_icon tasks)" "Tasks" \
       "$(printf '  %d open  \xc2\xb7  %d due today' "$tasks_open_count" "$tasks_due_today_count")"
   else
-    _brief_section "✓" "Tasks" "$(printf '  %d open' "$tasks_open_count")"
+    _brief_section "$(jarvis_icon tasks)" "Tasks" "$(printf '  %d open' "$tasks_open_count")"
   fi
   if [[ -n "$tasks_top" ]]; then
     printf '%s\n' "$tasks_top" | jq -r '
@@ -480,18 +483,18 @@ if [[ "$skip_notes" != "true" ]] && \
   if (( notes_touched_week > 0 )); then
     _notes_trailer+="  $(printf '\xc2\xb7')  ${notes_touched_week} touched this week"
   fi
-  _brief_section "📓" "Notes" "$_notes_trailer"
+  _brief_section "$(jarvis_icon notes)" "Notes" "$_notes_trailer"
   printf '\n'
 fi
 
 if [[ -n "$deploys" ]]; then
-  _brief_section "🚀" "Deploys"
+  _brief_section "$(jarvis_icon deploys)" "Deploys"
   printf '%s\n' "$deploys" | jq -r '"    " + (.ts | sub("^.*T"; "") | sub(":[0-9]+Z?$"; "")) + "  " + .service + "  " + .version + "  " + .status'
   printf '\n'
 fi
 
 if [[ -n "$oncall" ]]; then
-  _brief_section "📟" "Oncall"
+  _brief_section "$(jarvis_icon oncall)" "Oncall"
   printf '%s\n' "$oncall" | jq -r '
     "    " + .role + ":  " + .who +
     (if .pager then "  (pager: \(.pager))" else "" end) +

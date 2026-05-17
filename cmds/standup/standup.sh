@@ -55,6 +55,8 @@ meeting_url="${CLIFT_FLAGS[meeting]:-}"
 
 # shellcheck source=/dev/null
 source "${CLI_DIR}/lib/state/profile.sh"
+# shellcheck source=/dev/null
+source "${CLI_DIR}/lib/ui/icons.sh"
 # state_profile_dir centralizes the precedence chain and exports
 # JARVIS_PROFILE so downstream libs (calendar, integrations) read it back.
 state_profile_dir >/dev/null
@@ -174,11 +176,12 @@ done
 
 git_log_lines=""
 if [[ -n "$git_commits_ndjson" ]]; then
-  git_log_lines="$(printf '%s' "$git_commits_ndjson" | jq -r '
+  _warn_icon="$(jarvis_icon warn)"
+  git_log_lines="$(printf '%s' "$git_commits_ndjson" | jq -r --arg warn "$_warn_icon" '
     "- " + .repo +
     (if .pr != null then "#\(.pr)" else "@\(.sha)" end) +
     "  " + .subject +
-    (if .pr == null then "  ⚠ no PR" else "" end)
+    (if .pr == null then "  \($warn) no PR" else "" end)
   ' 2>/dev/null || true)"
   [[ -n "$git_log_lines" ]] && git_log_lines+=$'\n'
 fi
@@ -555,16 +558,19 @@ if [[ -n "$jira_comments" ]]; then
   had_yesterday=1
 fi
 if [[ -n "$yesterday_merged_prs" ]]; then
-  # 🚀 distinguishes shipped PRs from in-progress git commits.
-  printf '%s\n' "$yesterday_merged_prs" | jq -r '
-    "    - 🚀 " + .repo + "#" + (.number|tostring) + "  " + .title'
+  # pr_merged icon distinguishes shipped PRs from in-progress git commits.
+  _shipped_icon="$(jarvis_icon pr_merged)"
+  printf '%s\n' "$yesterday_merged_prs" | jq -r --arg icon "$_shipped_icon" '
+    "    - " + $icon + " " + .repo + "#" + (.number|tostring) + "  " + .title'
   had_yesterday=1
 fi
 if [[ -n "$yesterday_created_prs" ]]; then
-  # 📝 distinguishes opened-but-not-yet-merged PRs from shipped ones; draft
-  # PRs carry a [DRAFT] marker since reviewers shouldn't act on them yet.
-  printf '%s\n' "$yesterday_created_prs" | jq -r '
-    "    - 📝 " + (if .isDraft then "[DRAFT] " else "" end) +
+  # pr_opened icon distinguishes opened-but-not-yet-merged PRs from shipped
+  # ones; draft PRs carry a [DRAFT] marker since reviewers shouldn't act
+  # on them yet.
+  _opened_icon="$(jarvis_icon pr_opened)"
+  printf '%s\n' "$yesterday_created_prs" | jq -r --arg icon "$_opened_icon" '
+    "    - " + $icon + " " + (if .isDraft then "[DRAFT] " else "" end) +
     .repo + "#" + (.number|tostring) + "  " + .title'
   had_yesterday=1
 fi

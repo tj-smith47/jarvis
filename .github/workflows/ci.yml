@@ -56,6 +56,12 @@ jobs:
           echo "CLI_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Build native helpers
+        # JARVIS_CAL_OFFLINE=0: build_cal.sh defaults to --offline for
+        # reproducible local builds; CI only caches jarvis-cal/target, not
+        # the cargo registry, so allow network fetch here (documented
+        # escape hatch in scripts/build_cal.sh).
+        env:
+          JARVIS_CAL_OFFLINE: "0"
         run: task build
 
       - name: Run BATS tests
