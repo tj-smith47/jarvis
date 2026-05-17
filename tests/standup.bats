@@ -202,9 +202,12 @@ EOF2
   fi
   exit 0
 fi'
+  source "${JARVIS_DIR}/lib/ui/icons.sh"
+  local merged_icon
+  merged_icon="$(jarvis_icon pr_merged)"
   run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
   [ "$status" -eq 0 ]
-  [[ "$output" == *"🚀 acme/widgets#42"*"feat: ship audit doc"* ]]
+  [[ "$output" == *"${merged_icon} acme/widgets#42"*"feat: ship audit doc"* ]]
 }
 
 @test "yesterday surfaces tasks closed in the standup window" {
@@ -413,7 +416,7 @@ EOF
   [[ "$output" == *"PLAT-789"* ]]
 }
 
-@test "yesterday: created-but-unmerged PRs render with 📝 prefix" {
+@test "yesterday: created-but-unmerged PRs render with pr_opened icon prefix" {
   # gh shim: created PR 99, draft.
   shim_install gh '
 case "$1 $2" in
@@ -429,9 +432,12 @@ JSON
       *) printf "[]\n" ;;
     esac ;;
 esac'
+  source "${JARVIS_DIR}/lib/ui/icons.sh"
+  local opened_icon
+  opened_icon="$(jarvis_icon pr_opened)"
   run bash "${JARVIS_DIR}/cmds/standup/standup.sh" --since 1d --repo "$REPO" --profile test
   [ "$status" -eq 0 ]
-  [[ "$output" == *"📝"* ]]
+  [[ "$output" == *"${opened_icon}"* ]]
   [[ "$output" == *"[DRAFT]"* ]]
   [[ "$output" == *"acme/widgets#99"* ]]
   [[ "$output" == *"feat: draft handoff"* ]]

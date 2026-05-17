@@ -36,6 +36,12 @@ jobs:
           sudo wget -qO /usr/local/bin/yq \
             https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
+          # dasel — lib/state/config.sh hard-depends on it for TOML reads.
+          # Pin to v2 because v3 drops `put` (unused here) but the same
+          # `dasel -i toml <key> < file` works on both.
+          sudo wget -qO /usr/local/bin/dasel \
+            https://github.com/tomwright/dasel/releases/latest/download/dasel_linux_amd64
+          sudo chmod +x /usr/local/bin/dasel
           # Task (go-task)
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
           # BATS
