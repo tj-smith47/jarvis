@@ -193,10 +193,10 @@ if [[ "$skip_rem" != "true" && -d "$profile_dir/reminders" ]]; then
   _rem_files=( "$profile_dir/reminders"/*.json )
   shopt -u nullglob
   if (( ${#_rem_files[@]} > 0 )); then
-    reminders="$(jq -cs --arg now "$now_iso" --arg end "$day_end" '
+    reminders="$(jq -cs --arg now "$now_iso" --arg until "$day_end" '
       [ .[]
         | select((.status // "pending") == "pending" or (.status // "") == "active")
-        | select(.trigger_at >= $now and .trigger_at < $end) ]
+        | select(.trigger_at >= $now and .trigger_at < $until) ]
       | sort_by(.trigger_at)
       | .[]
     ' "${_rem_files[@]}" 2>/dev/null || true)"

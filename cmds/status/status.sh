@@ -266,7 +266,7 @@ _render_json() {
     --argjson nm "$next_msg" \
     --argjson up "$upcoming_json" \
     --argjson cni "$cal_next_in" --argjson cnt "$cal_next_title" --argjson cnu "$cal_next_url" \
-    --argjson if "$jira_count" --argjson jt "$jira_top_json" \
+    --argjson inf "$jira_count" --argjson jt "$jira_top_json" \
     --argjson ndt "$notes_daily_today" --argjson ntw "$notes_touched_week" \
     '{profile:$profile, ts:$ts,
       tasks:    {open: $o, done_today: $dt, top: $tt},
@@ -275,7 +275,7 @@ _render_json() {
       reminders:{scheduled: $sc, next_in_minutes: $ni, next_message: $nm,
                  upcoming: $up},
       calendar: {next_in_minutes: $cni, next_title: $cnt, next_url: $cnu},
-      jira:     {in_flight: $if, top: $jt},
+      jira:     {in_flight: $inf, top: $jt},
       notes:    {daily_today: $ndt, touched_this_week: $ntw}}'
 }
 
