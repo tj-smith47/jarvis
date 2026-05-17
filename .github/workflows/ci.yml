@@ -33,15 +33,22 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y jq python3 shellcheck
           # yq
-          sudo wget -qO /usr/local/bin/yq \
+          sudo wget -O /usr/local/bin/yq \
             https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
           # dasel — lib/state/config.sh hard-depends on it for TOML reads.
-          # Pin to v2 because v3 drops `put` (unused here) but the same
-          # `dasel -i toml <key> < file` works on both.
-          sudo wget -qO /usr/local/bin/dasel \
+          # `dasel -i toml <key> < file` works on v2 and v3 (v3 wraps strings
+          # in single quotes; config_get strips them).
+          sudo wget -O /usr/local/bin/dasel \
             https://github.com/tomwright/dasel/releases/latest/download/dasel_linux_amd64
           sudo chmod +x /usr/local/bin/dasel
+          # Verify the installs succeeded — silent wget failures masked behind
+          # `chmod +x` produce a zero-byte "binary" that fails opaquely deep
+          # inside config_get. Fail loud here instead.
+          file /usr/local/bin/dasel /usr/local/bin/yq
+          /usr/local/bin/dasel --help >/dev/null
+          printf '[oncall]\nprimary = "alex"\n' \
+            | /usr/local/bin/dasel -i toml oncall.primary
           # Task (go-task)
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
           # BATS

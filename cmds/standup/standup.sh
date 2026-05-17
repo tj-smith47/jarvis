@@ -482,13 +482,15 @@ blockers="${blockers%$'\n'}"
 # Open via `open`, fall back to `xdg-open`, fall back to printing the URL.
 _standup_open_url() {
   local url="$1"
+  # `open` / `xdg-open` exit non-zero on headless boxes (no DISPLAY) or when
+  # the URL handler is misconfigured. Under `set -e` that would abort the
+  # whole render. Fall through to the next strategy on failure, and always
+  # exit 0 from the printf branch so the caller never sees an error.
   if command -v open >/dev/null 2>&1; then
-    open "$url"
-    return
+    if open "$url" 2>/dev/null; then return 0; fi
   fi
   if command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$url"
-    return
+    if xdg-open "$url" 2>/dev/null; then return 0; fi
   fi
   printf '%s\n' "$url"
 }
